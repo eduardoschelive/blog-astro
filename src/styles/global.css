@@ -123,6 +123,54 @@
   .article-content :where(a) {
     @apply text-primary underline underline-offset-2;
   }
+  .article-content :where(a[data-external])::after {
+    content: ' ↗';
+    @apply no-underline;
+  }
+}
+
+/* Shiki dual-theme: pick light/dark token colors by the `.dark` class. */
+.astro-code,
+.astro-code span {
+  color: var(--shiki-light);
+}
+:where(.dark) .astro-code,
+:where(.dark) .astro-code span {
+  color: var(--shiki-dark);
+}
+
+/* Code block chrome: line numbers via CSS counters. */
+.code-block code {
+  font-feature-settings:
+    'liga' 1,
+    'calt' 1;
+  counter-reset: step;
+  counter-increment: step 0;
+  display: block;
+  line-height: 0.8;
+}
+.code-block pre {
+  overflow-x: auto;
+  overflow-y: clip;
+  margin: 0;
+  padding-bottom: 0.3em;
+  background: transparent;
+}
+.code-block code .line {
+  display: block;
+  white-space: pre;
+  padding: 0.2em 0;
+}
+.code-block code .line::before {
+  content: counter(step);
+  counter-increment: step;
+  width: 2.5rem;
+  margin-right: 1rem;
+  display: inline-block;
+  text-align: right;
+  color: rgba(115, 138, 148, 0.4);
+  user-select: none;
+  vertical-align: top;
 }
 
 /* CSS-only tooltip (no JS island): shown on hover/focus-within. */

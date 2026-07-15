@@ -3,6 +3,7 @@ import { render, type CollectionEntry } from 'astro:content'
 import Callout from './Callout.astro'
 import Example from './Example.astro'
 import Blockquote from './Blockquote.astro'
+import CodeBlock from './CodeBlock.astro'
 import Tooltip from './Tooltip.astro'
 import MemoryVisualization from './MemoryVisualization.astro'
 import StackVisualization from './StackVisualization.astro'
@@ -29,6 +30,7 @@ const components = {
   HashTableCompare,
   TypeTable,
   blockquote: Blockquote,
+  pre: CodeBlock,
 }
 ---
 
