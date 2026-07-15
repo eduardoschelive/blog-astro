@@ -1,0 +1,323 @@
+---
+title: Functions
+description: Functions are the building blocks of every Go program. Learn how to declare them, pass parameters, return values, and use Go's distinctive multiple return values.
+slug: functions
+publishedAt: '2026-04-14'
+keywords:
+  [
+    golang,
+    go functions,
+    go function declaration,
+    go multiple return values,
+    go named return values,
+    go parameters,
+  ]
+---
+
+## Code that earns its name
+
+Every non-trivial program eventually does the same thing: it breaks a big problem into smaller problems and solves each one separately. Functions are the mechanism Go provides for that decomposition. A function gives a reusable block of logic a name, an interface, and a boundary — callers know what goes in and what comes out, without needing to know how the inside works.
+
+You have been using functions since the first article. `main` is a function. `fmt.Println` is a function. Now it is time to write your own.
+
+## Declaring a function
+
+The basic syntax for a function in Go is:
+
+```go
+func name(parameters) returnType {
+    // body
+}
+
+```
+
+- `func` is the keyword that begins a function declaration.
+- `name` is the identifier used to call the function.
+- `parameters` is a comma-separated list of `name type` pairs — the inputs the function accepts. Can be empty.
+- `returnType` is the type of the value the function produces. Can be omitted if the function returns nothing.
+
+A concrete example:
+
+```go
+func greet(name string) {
+    fmt.Println("Hello,", name)
+}
+
+```
+
+This function takes a single `string` parameter and prints a greeting. It returns nothing, so the return type is omitted entirely.
+
+## Functions that return nothing
+
+A function that produces no output — sometimes called a void function — simply omits the return type. `main` is the clearest example you already know:
+
+```go
+func main() {
+    fmt.Println("Hello, world!")
+}
+
+```
+
+`main` takes no parameters and returns no value. It is the entry point that the Go runtime calls when the program starts. Every executable Go program must have exactly one `main` function in the `main` package.
+
+`fmt.Println` is another function you have called many times. From your program's perspective it is a black box: you pass it values, it writes to standard output, and nothing comes back.
+
+You can write your own void functions the same way:
+
+```go
+func printDivider() {
+    fmt.Println("---")
+}
+
+func logMessage(level string, msg string) {
+    fmt.Printf("[%s] %s\n", level, msg)
+}
+
+```
+
+`printDivider` takes nothing and produces nothing — it just performs a side effect. `logMessage` takes two strings and uses them to produce formatted output. Neither returns a value, and Go does not require a `return` statement at the end of a void function.
+
+## Functions that return a value
+
+To return a value, add the return type after the parameter list and use the `return` statement inside the body:
+
+```go
+func add(a int, b int) int {
+    return a + b
+}
+
+```
+
+The return type `int` appears after the closing parenthesis of the parameter list. The `return` statement exits the function and sends the value back to the caller:
+
+```go
+result := add(3, 4)
+fmt.Println(result) // 7
+
+```
+
+When two or more consecutive parameters share the same type, Go lets you write the type only once:
+
+```go
+func add(a, b int) int {
+    return a + b
+}
+
+```
+
+`a` and `b` both have type `int`, so you only declare it once at the end. This is a common Go convention — it keeps parameter lists concise without losing any information.
+
+## Multiple return values
+
+This is where Go diverges from most languages. A function can return more than one value:
+
+```go
+func divide(a, b float64) (float64, error) {
+    if b == 0 {
+        return 0, fmt.Errorf("division by zero")
+    }
+    return a / b, nil
+}
+
+```
+
+The return types are listed together in parentheses. The `return` statement sends both values back simultaneously. At the call site, you capture them with a multi-assignment:
+
+```go
+result, err := divide(10, 3)
+if err != nil {
+    fmt.Println("Error:", err)
+} else {
+    fmt.Println(result) // 3.3333333333333335
+}
+
+```
+
+This pattern — returning a result alongside an error — is idiomatic Go. Rather than throwing exceptions, functions signal failure by returning an error value as a second result. The caller is forced to handle it explicitly, right where the call happens.
+
+<Callout type="note" title="The blank identifier">
+If you want to discard one of the return values, use `_` (the blank identifier):
+
+```go
+result, _ := divide(10, 3)
+
+```
+
+This tells the compiler — and the reader — that you are intentionally ignoring the second return value. Go does not allow declared variables that are never used, so `_` is the explicit way to opt out without triggering a compile error.
+
+</Callout>
+
+## Named return values
+
+Go also allows you to name the return values directly in the function signature. Named return values act as pre-declared variables inside the function body:
+
+```go
+func minMax(nums []int) (min, max int) {
+    min, max = nums[0], nums[0]
+    for _, n := range nums {
+        if n < min {
+            min = n
+        }
+        if n > max {
+            max = n
+        }
+    }
+    return
+}
+
+```
+
+The return types are written as `(min, max int)` — both are `int`, and both have names. Inside the function, `min` and `max` are regular variables initialized to their zero values. The bare `return` at the end — called a _naked return_ — automatically returns whatever those variables currently hold.
+
+Named return values serve two purposes: they act as lightweight documentation (the name tells the caller what each value represents), and they let short functions use naked returns to avoid repeating the variable names.
+
+<Callout type="warning" title="Use named returns sparingly">
+  Naked returns hurt readability in longer functions. A reader cannot tell what
+  the function returns without tracing back to where the named variables were
+  last assigned. For most functions, an explicit `return value` is clearer.
+  Reserve named return values for short functions where the names genuinely act
+  as documentation.
+</Callout>
+
+## Variadic parameters
+
+Most functions declare a fixed number of parameters — the caller must supply exactly that many arguments. Go also supports variadic parameters, which allow a function to accept any number of arguments for its last parameter. The syntax uses three dots before the type:
+
+```go
+func sum(nums ...int) int {
+    total := 0
+    for _, n := range nums {
+        total += n
+    }
+    return total
+}
+
+```
+
+Inside the function, `nums` is an ordinary `[]int` slice. You can call `sum` with zero arguments, one, or a hundred — all are valid:
+
+```go
+fmt.Println(sum())               // 0
+fmt.Println(sum(1, 2, 3))        // 6
+fmt.Println(sum(10, 20, 30, 40)) // 100
+
+```
+
+The variadic parameter must be the last one in the list. If a function needs other parameters, they come first:
+
+```go
+func logf(level string, args ...any) {
+    fmt.Printf("[%s] ", level)
+    fmt.Println(args...)
+}
+
+```
+
+If you already have a slice and want to pass it to a variadic function, expand it with `...` at the call site:
+
+```go
+nums := []int{1, 2, 3, 4}
+fmt.Println(sum(nums...)) // 10
+
+```
+
+Without `...`, the compiler would expect a single `[]int` argument and reject the call. The `...` operator unpacks the slice into individual arguments.
+
+<Callout type="note" title="Go has no named or default parameters">
+  Unlike Python or Kotlin, Go does not support named arguments (`add(b=3, a=2)`)
+  or default parameter values. Every parameter must be passed by the caller, in
+  order. When you find yourself needing optional values or a growing parameter
+  list, the Go idiom is to define a struct and pass that instead — the fields
+  serve as named, selectively populated inputs.
+</Callout>
+
+## First-class functions
+
+In Go, functions are first-class values — they can be assigned to variables, passed as arguments to other functions, and returned from functions.
+
+**Assigning a function to a variable:**
+
+```go
+add := func(a, b int) int { return a + b }
+fmt.Println(add(3, 4)) // 7
+
+```
+
+A function literal — an anonymous function without a name — is assigned to `add` like any other value. The variable holds the function itself, not a call to it.
+
+**Passing a function as an argument:**
+
+```go
+func apply(op func(int, int) int, a, b int) int {
+    return op(a, b)
+}
+
+fmt.Println(apply(add, 3, 4)) // 7
+
+```
+
+`apply` takes a function as its first argument. Any function whose signature matches `func(int, int) int` can be passed in — the caller decides the behavior, the function decides the mechanism.
+
+**Returning a function from a function:**
+
+```go
+func multiplier(factor int) func(int) int {
+    return func(n int) int {
+        return n * factor
+    }
+}
+
+double := multiplier(2)
+triple := multiplier(3)
+fmt.Println(double(5)) // 10
+fmt.Println(triple(5)) // 15
+
+```
+
+`multiplier` returns a new function each time it is called. The returned function _closes over_ `factor` — it captures the variable from the enclosing scope and carries it along. This is called a closure. The value of `factor` is baked into the function at the moment `multiplier` returns, so `double` and `triple` each hold their own independent copy.
+
+This capability — treating behavior as a value — is what makes functions a genuine abstraction tool rather than just a way to group lines of code.
+
+## Function types
+
+Every function has a type defined by its signature — the parameter types and return type. When that type appears inline in a declaration it can quickly become hard to read:
+
+```go
+func apply(op func(int, int) int, transform func(int) int, a int) int {
+    return transform(op(a, a))
+}
+
+```
+
+Go lets you define a named type for any function signature using the `type` keyword:
+
+```go
+type BinaryOp func(int, int) int
+type Transform func(int) int
+
+func apply(op BinaryOp, transform Transform, a int) int {
+    return transform(op(a, a))
+}
+
+```
+
+Any function whose signature matches `BinaryOp` satisfies the type without an explicit conversion:
+
+```go
+func add(a, b int) int { return a + b }
+func double(n int) int { return n * 2 }
+
+result := apply(add, double, 3) // double(add(3, 3)) = double(6) = 12
+fmt.Println(result)             // 12
+
+```
+
+Named function types serve two purposes: they make complex signatures readable, and they communicate intent. When a parameter is typed `BinaryOp`, the reader immediately understands the expected shape of the function — without parsing `func(int, int) int` from scratch. This pattern becomes especially valuable when the same function shape recurs across a package: define it once as a type and reference it by name everywhere.
+
+## Programs as function orchestration
+
+Step back and look at any Go program and you will see the same pattern: `main` calls functions, those functions call other functions, each one focused on a single well-defined task. The program's behavior emerges from how those calls are composed.
+
+This is not an accident of style. Each function is responsible for one thing, accepts what it needs through its parameters, and announces what it produces through its return type. Nothing leaks out. The signature is the contract.
+
+Functions are the primary unit of abstraction in Go. Every other construct you will encounter — methods, interfaces, goroutines — builds on top of them.

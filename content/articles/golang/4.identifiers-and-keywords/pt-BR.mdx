@@ -1,0 +1,181 @@
+---
+title: Identificadores e keywords
+description: Entenda as regras de nomenclatura de Go, as 25 keywords reservadas e os identificadores pré-declarados que vêm embutidos em todo programa Go.
+slug: identificadores-e-palavras-chave
+publishedAt: '2026-04-07'
+keywords:
+  [
+    golang,
+    identificadores go,
+    keywords go,
+    palavras reservadas go,
+    convenções de nomenclatura go,
+    identificadores pré-declarados go,
+    nomes exportados go,
+    blank identifier,
+    universe block,
+  ]
+---
+
+## O que é um identificador
+
+Um identificador é o nome que você dá a algo no seu programa — uma variável, uma constante, um tipo, uma função, um package. Todo nome que você escreve em Go é um identificador.
+
+A especificação da linguagem define exatamente quais caracteres são permitidos:
+
+- Um identificador é formado por uma ou mais letras e dígitos Unicode
+- O primeiro caractere deve ser uma letra — dígitos não são permitidos no início
+- O underscore `_` é considerado uma letra
+
+```go
+age         // válido
+_           // válido — o blank identifier
+_count      // válido — underscore é uma letra
+user123     // válido — dígito após o primeiro caractere
+café        // válido — letras Unicode são permitidas
+123abc      // inválido — começa com dígito
+my-variable // inválido — hífen não é uma letra
+```
+
+Go é case-sensitive. `count`, `Count` e `COUNT` são três identificadores distintos.
+
+### Identificadores exportados vs não exportados
+
+A capitalização da primeira letra tem um significado específico em Go. Um identificador que começa com letra **maiúscula** é **exportado** — visível e acessível a partir de outros packages. Um que começa com letra **minúscula** é **não exportado** — privado ao package em que foi definido.
+
+```go
+package math
+
+var internalState = 0  // não exportado — visível apenas dentro deste package
+var Pi = 3.14159       // exportado — acessível como math.Pi de qualquer lugar
+```
+
+Isso não é uma convenção — é imposto pelo compilador. Não existem keywords `public` ou `private` em Go. A capitalização é o mecanismo completo de controle de acesso.
+
+### O blank identifier
+
+O underscore sozinho — `_` — é um identificador especial chamado **blank identifier**. Ele funciona como um slot de descarte write-only: você pode atribuir a ele, mas nunca pode lê-lo.
+
+O uso mais comum é descartar valores que você não precisa:
+
+```go
+value, _ := strconv.Atoi("42") // descarta o erro
+```
+
+Go exige que toda variável declarada seja usada. O blank identifier permite satisfazer esse requisito quando uma função retorna múltiplos valores e você só precisa de alguns deles.
+
+## Identificadores pré-declarados
+
+Go vem com um conjunto de identificadores que estão sempre disponíveis em todo programa, sem nenhum import. Eles são definidos no **universe block** — o escopo mais externo que envolve todo código Go.
+
+Ao contrário das keywords, identificadores pré-declarados não são reservados. Tecnicamente você pode fazer shadow deles declarando seu próprio identificador com o mesmo nome. Quase certamente você não deveria — fazer isso remove o acesso ao original e cria código confuso.
+
+### Tipos
+
+```
+any        bool       byte       comparable
+complex64  complex128 error      float32
+float64    int        int8       int16
+int32      int64      rune       string
+uint       uint8      uint16     uint32
+uint64     uintptr
+```
+
+Você já viu a maioria deles no artigo de tipos básicos. `any` é um alias para `interface{}` — o tipo que aceita qualquer valor. `error` é um tipo interface usado em todo o Go para tratamento de erros. `comparable` é uma constraint usada em generics.
+
+### Constantes
+
+Três constantes pré-declaradas existem:
+
+- `true` e `false` — os únicos valores do tipo `bool`
+- `iota` — o contador em compile time usado dentro de blocos `const`
+
+### O zero value: nil
+
+`nil` é o zero value para ponteiros, slices, maps, channels, funções e interfaces. Não é uma keyword — é um identificador pré-declarado sem tipo próprio. Seu tipo é determinado pelo contexto.
+
+```go
+var p *int           // p é nil
+var s []string       // s é nil
+var m map[string]int // m é nil
+```
+
+### Funções built-in
+
+Go fornece um conjunto de funções built-in que estão sempre em escopo:
+
+| Função    | Propósito                                                        |
+| --------- | ---------------------------------------------------------------- |
+| `len`     | Comprimento de uma string, slice, map, array ou channel          |
+| `cap`     | Capacidade de um slice ou channel                                |
+| `make`    | Aloca e inicializa slices, maps e channels                       |
+| `new`     | Aloca memória zerada para um tipo e retorna um ponteiro          |
+| `append`  | Adiciona elementos a um slice                                    |
+| `copy`    | Copia elementos entre slices                                     |
+| `delete`  | Remove uma chave de um map                                       |
+| `close`   | Fecha um channel                                                 |
+| `complex` | Constrói um número complexo a partir de partes real e imaginária |
+| `real`    | Extrai a parte real de um número complexo                        |
+| `imag`    | Extrai a parte imaginária de um número complexo                  |
+| `panic`   | Interrompe a execução normal e inicia o unwinding da stack       |
+| `recover` | Retoma o controle após um panic                                  |
+| `print`   | Escreve no stderr (baixo nível, para debugging)                  |
+| `println` | Escreve no stderr com newline (baixo nível, para debugging)      |
+
+<Callout type="note" title="print e println não são fmt.Print">
+  As funções built-in `print` e `println` escrevem no stderr e são destinadas a
+  debugging de baixo nível — antes do runtime estar totalmente inicializado.
+  Para qualquer saída real, use o package `fmt`: `fmt.Print`, `fmt.Println`,
+  `fmt.Printf`.
+</Callout>
+
+## Keywords
+
+Keywords são palavras que a própria linguagem Go reservou para si. Elas têm significados fixos embutidos no compilador e **não podem ser usadas como identificadores** — você não pode nomear uma variável de `func` nem um tipo de `for`.
+
+Go tem exatamente **25 keywords**. Esse número pequeno é intencional — menos keywords significa uma linguagem menor, mais fácil de aprender e de ler.
+
+### Declaração e tipos
+
+Essas keywords introduzem novas entidades no programa:
+
+| Keyword     | Propósito                                     |
+| ----------- | --------------------------------------------- |
+| `var`       | Declara uma variável                          |
+| `const`     | Declara uma constante                         |
+| `type`      | Declara um novo tipo ou type alias            |
+| `func`      | Declara uma função ou method                  |
+| `struct`    | Define um tipo composto com campos nomeados   |
+| `interface` | Define um conjunto de assinaturas de métodos  |
+| `map`       | Declara um tipo map                           |
+| `chan`      | Declara um tipo channel                       |
+| `package`   | Declara o package ao qual um arquivo pertence |
+| `import`    | Importa packages                              |
+
+### Controle de fluxo
+
+Essas keywords controlam a ordem de execução:
+
+| Keyword                       | Propósito                                           |
+| ----------------------------- | --------------------------------------------------- |
+| `if` / `else`                 | Desvio condicional                                  |
+| `for`                         | O único construto de loop em Go                     |
+| `range`                       | Itera sobre slice, map, string ou channel           |
+| `switch` / `case` / `default` | Condicional multi-branch                            |
+| `break`                       | Sai de um loop ou switch                            |
+| `continue`                    | Pula para a próxima iteração do loop                |
+| `return`                      | Sai de uma função, opcionalmente retornando valores |
+| `goto`                        | Salta para uma instrução com label                  |
+| `fallthrough`                 | Continua para o próximo case em um switch           |
+
+### Concorrência e execução diferida
+
+| Keyword  | Propósito                                                                 |
+| -------- | ------------------------------------------------------------------------- |
+| `go`     | Lança uma goroutine                                                       |
+| `select` | Aguarda em múltiplas operações de channel                                 |
+| `defer`  | Agenda uma chamada de função para executar quando a função atual retornar |
+
+<Callout type="note" title="Go não tem while">
+Go não tem a keyword `while`. O loop `for` cobre todos os padrões de repetição: `for {}` é um loop infinito, `for condition {}` é um while, e `for i := 0; i < n; i++ {}` é o loop contado clássico.
+</Callout>

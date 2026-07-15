@@ -1,0 +1,232 @@
+---
+title: Strings
+description: Deep dive into Go strings — stored as UTF-8 byte sequences, immutable, and fully Unicode-aware. Learn indexing, slicing, conversions, and how to iterate correctly.
+slug: strings
+publishedAt: '2026-04-08'
+keywords:
+  [
+    golang,
+    go strings,
+    go string type,
+    go utf-8,
+    go rune,
+    go byte slice,
+    go string immutable,
+    go string indexing,
+    go unicode,
+  ]
+---
+
+## What a string is
+
+In Go, a string is a read-only sequence of bytes. It is not a sequence of characters, not a sequence of Unicode code points — it is bytes. The language makes no guarantee about what those bytes represent. By convention, and by default in all Go source code, string data is expected to be valid UTF-8, but the type itself does not enforce that.
+
+Concretely, a string is a two-field data structure: a pointer to the underlying byte array and a length. That is all. No null terminator, no capacity field — just a pointer and a count.
+
+```go
+s := "Hello, Go"
+fmt.Println(len(s)) // 9 — number of bytes, not characters
+
+```
+
+String literals are written with double quotes. Go also supports raw string literals delimited by backticks — these span multiple lines and ignore escape sequences:
+
+```go
+s := `Line one
+Line two
+Line three`
+
+```
+
+## Indexing and slicing
+
+Because a string is a byte sequence, index notation gives you a `byte` — not a character:
+
+```go
+s := "Hello"
+fmt.Println(s[0])         // 72 — the byte value of 'H'
+fmt.Println(string(s[0])) // "H"
+
+```
+
+You can extract a substring using a slice expression. The syntax is the same as for slices: `s[low:high]` returns the bytes from index `low` up to (but not including) index `high`:
+
+```go
+s := "Hello, Go"
+fmt.Println(s[7:])  // "Go"
+fmt.Println(s[:5])  // "Hello"
+fmt.Println(s[7:9]) // "Go"
+
+```
+
+The result is still a string — slicing does not copy the underlying bytes. The new string shares memory with the original.
+
+<Callout type="warning" title="Slicing at byte boundaries">
+  Slice expressions operate on byte offsets, not character positions. Slicing in
+  the middle of a multi-byte UTF-8 sequence produces a string with invalid
+  UTF-8. If your strings contain non-ASCII characters, convert to `[]rune`
+  first, or use `utf8.RuneCountInString` and `utf8.DecodeRuneInString` to work
+  at the code point level.
+</Callout>
+
+## Strings are immutable
+
+Once created, a string cannot be modified. You can reassign the variable, but you cannot change the bytes the string points to:
+
+```go
+s := "hello"
+s[0] = 'H' // compile error: cannot assign to s[0] (neither addressable nor a map index expression)
+
+```
+
+This is a deliberate design choice. Because strings are immutable, they are safe to share — multiple variables can point to the same underlying bytes without any risk of one modifying what the other sees. It also means copying a string is cheap: you copy the pointer and length, not the bytes.
+
+To build a modified string, you convert to a mutable type, change it, and convert back:
+
+```go
+b := []byte("hello")
+b[0] = 'H'
+s := string(b) // "Hello"
+
+```
+
+## String, rune, and byte conversions
+
+The three types `string`, `rune`, and `byte` are closely related, and Go allows explicit conversions between them. Each conversion has a specific meaning.
+
+| Conversion                          | What it does                                                        |
+| ----------------------------------- | ------------------------------------------------------------------- |
+| `string(r)` where `r` is a `rune`   | Creates a string containing the UTF-8 encoding of that code point   |
+| `string(b)` where `b` is a `byte`   | Creates a one-byte string containing that byte value                |
+| `string(n)` where `n` is an integer | Creates a string with the UTF-8 encoding of code point `n`          |
+| `[]byte(s)`                         | Copies the string bytes into a new `[]byte`                         |
+| `[]rune(s)`                         | Decodes the string as UTF-8 and returns each code point as a `rune` |
+| `rune(b)`                           | Widens the byte value to a `rune`                                   |
+| `byte(r)`                           | Truncates the rune value to a single byte                           |
+
+```go
+r := 'A'
+fmt.Println(string(r))   // "A"
+fmt.Println([]byte("Hi")) // [72 105]
+fmt.Println([]rune("Héllo")) // [72 233 108 108 111]
+
+```
+
+<Callout type="warning" title="string(int) does not format the number">
+  `string(65)` gives `"A"` — the character with code point 65 — not the string
+  `"65"`. To convert a number to its decimal representation, use `strconv.Itoa`
+  or `fmt.Sprintf`. This is a common source of confusion for developers coming
+  from other languages.
+</Callout>
+
+You cannot implicitly convert between these types. Attempting to assign a `rune` or `byte` value directly to a `string` variable — or pass one where the other is expected — is a compile error:
+
+```go
+var s string = 'A' // compile error: cannot use 'A' (untyped rune constant 65) as string value
+
+```
+
+## UTF-8 and Unicode
+
+Go source files are always UTF-8. String literals in your source code are stored as the UTF-8 encoding of whatever characters you wrote. For ASCII text — letters, digits, punctuation — each character occupies exactly one byte, so indexing by byte and indexing by character are the same thing. For non-ASCII characters, they are not.
+
+UTF-8 is a variable-width encoding. A single Unicode code point (a `rune` in Go terminology) can take anywhere from 1 to 4 bytes:
+
+- ASCII characters (U+0000 to U+007F): 1 byte
+- Characters like é, ñ, ü (U+0080 to U+07FF): 2 bytes
+- CJK characters and most of the BMP (U+0800 to U+FFFF): 3 bytes
+- Emoji and supplementary characters (U+10000 and above): 4 bytes
+
+This means `len(s)` gives you the number of bytes, not the number of characters. For a string with multi-byte characters, these differ:
+
+```go
+s := "Héllo"
+fmt.Println(len(s))                    // 6 — bytes (é takes 2 bytes)
+fmt.Println(utf8.RuneCountInString(s)) // 5 — Unicode code points
+
+```
+
+### Indexing gives bytes, not runes
+
+Because a string is a byte sequence, `s[i]` always gives the byte at position `i`, not the character at position `i`. For strings that contain multi-byte characters, this produces the raw byte value — not the rune:
+
+```go
+s := "é"                // two bytes: 0xC3 0xA9
+fmt.Println(s[0])       // 195 — first byte of the UTF-8 encoding
+fmt.Println(string(s[0])) // "Ã" — the character for byte 0xC3
+
+```
+
+To work with characters rather than bytes, use `[]rune`:
+
+```go
+s := "Héllo"
+runes := []rune(s)
+fmt.Println(runes[1])         // 233 — the code point for 'é'
+fmt.Println(string(runes[1])) // "é"
+
+```
+
+### Ranging over a string
+
+The `for range` loop over a string is aware of UTF-8. It automatically decodes each code point and gives you the rune value along with the byte offset where that rune starts:
+
+```go
+for i, r := range "Héllo" {
+    fmt.Printf("byte offset %d: %c (%d)\n", i, r, r)
+}
+// byte offset 0: H (72)
+// byte offset 1: é (233)
+// byte offset 3: l (108)
+// byte offset 4: l (108)
+// byte offset 5: o (111)
+
+```
+
+Notice that `é` starts at byte offset 1 and the next character starts at byte offset 3, because `é` takes 2 bytes. `for range` handles all of this automatically — it is the idiomatic way to iterate over the characters of a string.
+
+<Callout type="note" title="When to use for range vs a byte loop">
+Use `for range` when you care about characters (runes). Use a plain `for i := 0; i < len(s); i++` loop when you care about bytes — for example, when scanning a known ASCII protocol or when processing binary data stored in a string. For most text processing, `for range` is the right choice.
+</Callout>
+
+## The strings package
+
+The `strings` package provides the standard toolkit for working with strings. A few of the most commonly used functions:
+
+| Function                          | What it does                                                              |
+| --------------------------------- | ------------------------------------------------------------------------- |
+| `strings.Contains(s, substr)`     | Reports whether `substr` is within `s`                                    |
+| `strings.HasPrefix(s, prefix)`    | Reports whether `s` starts with `prefix`                                  |
+| `strings.HasSuffix(s, suffix)`    | Reports whether `s` ends with `suffix`                                    |
+| `strings.Count(s, substr)`        | Counts non-overlapping instances of `substr` in `s`                       |
+| `strings.Index(s, substr)`        | Returns the byte index of the first occurrence of `substr`                |
+| `strings.Replace(s, old, new, n)` | Replaces the first `n` occurrences of `old` with `new`; `-1` replaces all |
+| `strings.ToUpper(s)`              | Returns `s` converted to uppercase                                        |
+| `strings.ToLower(s)`              | Returns `s` converted to lowercase                                        |
+| `strings.TrimSpace(s)`            | Returns `s` with leading and trailing whitespace removed                  |
+| `strings.Split(s, sep)`           | Splits `s` into a slice of substrings separated by `sep`                  |
+| `strings.Join(elems, sep)`        | Joins elements of a slice with `sep` between each                         |
+| `strings.Builder`                 | Efficient buffer for building strings incrementally                       |
+
+```go
+s := "  Hello, Go!  "
+fmt.Println(strings.TrimSpace(s))       // "Hello, Go!"
+fmt.Println(strings.ToUpper(s))         // "  HELLO, GO!  "
+fmt.Println(strings.Contains(s, "Go"))  // true
+fmt.Println(strings.Replace(s, "Go", "World", 1)) // "  Hello, World!  "
+
+parts := strings.Split("a,b,c", ",")
+fmt.Println(strings.Join(parts, " | ")) // "a | b | c"
+
+```
+
+For building strings from many pieces, use `strings.Builder` instead of concatenation — concatenation with `+` creates a new string on every operation, while `Builder` accumulates bytes in a buffer and produces one string at the end:
+
+```go
+var b strings.Builder
+for i := 0; i < 5; i++ {
+    fmt.Fprintf(&b, "%d", i)
+}
+fmt.Println(b.String()) // "01234"
+
+```

@@ -1,0 +1,138 @@
+---
+title: Dependency management
+description: Aprenda como Go modules gerenciam dependências com go.mod e go.sum, como adicionar e remover packages, e como manter seus arquivos de module limpos com go mod tidy.
+slug: gerenciamento-de-dependencias
+publishedAt: '2026-04-27'
+keywords:
+  - golang
+  - modules
+  - dependency management
+  - go.mod
+  - go.sum
+  - go get
+  - go mod tidy
+---
+
+Antes de Go modules, gerenciar dependências era um problema fragmentado — times usavam ferramentas diferentes, o pinning de versões era inconsistente e builds não eram reproduzíveis de forma confiável. Go modules, introduzidos no Go 1.11 e tornados padrão no Go 1.16, trouxeram uma abordagem padronizada: um único arquivo `go.mod` define um module e suas dependências, e `go.sum` garante verificação criptográfica de cada package baixado. Juntos, eles transformam o gerenciamento de dependências em um problema resolvido.
+
+## O que é um Go module
+
+Um module é a unidade de gerenciamento de dependências em Go. É uma coleção de packages relacionados com um único histórico de versões, definido por um arquivo `go.mod` na raiz de uma árvore de diretórios. A convenção preferida é ter um module por repositório.
+
+O arquivo `go.mod` declara a identidade do module e suas dependências diretas:
+
+```go
+module github.com/yourname/myapp
+
+go 1.23
+
+require (
+    github.com/some/package v1.2.3
+    github.com/another/lib  v0.8.1
+)
+
+```
+
+A diretiva `module` é o identificador canônico deste module. Todo package do module é importado usando esse caminho como prefixo. O bloco `require` lista as versões exatas das quais o module depende.
+
+## Inicializando um module
+
+`go mod init` cria um novo arquivo `go.mod` e inicia um novo module:
+
+```bash
+go mod init github.com/yourname/myapp
+
+```
+
+O argumento é o module path. Por convenção, é a URL completa do repositório sem o esquema — o mesmo caminho que outros projetos usariam para importar packages deste module:
+
+```bash
+go mod init github.com/yourname/myapp
+go mod init gitlab.com/org/project
+go mod init example.com/internal/service
+
+```
+
+Modules privados funcionam de forma idêntica aos públicos. O toolchain Go usa as credenciais padrão do git para buscá-los, então qualquer repositório que seu cliente git consiga acessar pode ser uma dependência de Go module.
+
+## Adicionando dependências
+
+`go get` adiciona uma dependência de module e atualiza o `go.mod`:
+
+```bash
+go get github.com/some/package
+
+```
+
+Por padrão, busca a última release com tag. Você pode solicitar uma versão específica usando a sintaxe `@`:
+
+```bash
+go get github.com/some/package@v1.2.3
+go get github.com/some/package@latest
+go get github.com/some/package@main
+
+```
+
+Após o `go get`, o module aparece no `go.mod` sob `require`, e seu hash criptográfico é registrado no `go.sum`. O package já está disponível para ser importado no seu código.
+
+## O arquivo go.sum
+
+`go.sum` é o lock file do module. Ele registra hashes criptográficos para cada versão específica de cada module no build graph — dependências diretas e indiretas:
+
+```go
+github.com/some/package v1.2.3 h1:xK9P...==
+github.com/some/package v1.2.3/go.mod h1:yL0Q...==
+
+```
+
+Cada linha contém o module path, a versão e um hash da árvore de conteúdo do module. Quando o toolchain Go baixa um module, recalcula o hash e compara com o `go.sum`. Uma divergência interrompe o build — sem substituições silenciosas, sem dependências adulteradas.
+
+Juntos, `go.mod` e `go.sum` garantem que todo build — em qualquer máquina, a qualquer momento — use exatamente as mesmas versões de module e exatamente o mesmo código. Ambos os arquivos devem ser versionados no controle de versão.
+
+<Callout type="note" title="Faça commit de go.mod e go.sum juntos">
+  Fazer commit apenas do `go.mod` sem o `go.sum` permite que o toolchain baixe
+  código diferente do que foi originalmente testado. Com ambos os arquivos
+  versionados, o build é totalmente reproduzível: qualquer pessoa que clone o
+  repositório obtém dependências idênticas.
+</Callout>
+
+## Listando dependências
+
+`go list` reporta os packages ou modules importados pelo seu projeto:
+
+```bash
+go list all
+
+```
+
+Isso lista todos os packages importados por qualquer package do module, incluindo dependências transitivas. Para ver apenas modules em vez de packages individuais, adicione a flag `-m`:
+
+```bash
+go list -m all
+
+```
+
+A saída mostra o module path e a versão fixada para cada module no build graph. É útil para auditar dependências e verificar qual versão de um module específico está em uso.
+
+## Organizando dependências
+
+`go mod tidy` sincroniza `go.mod` e `go.sum` com os imports reais no seu código-fonte:
+
+```bash
+go mod tidy
+
+```
+
+Ele faz duas coisas em uma única execução:
+
+- Remove do `go.mod` qualquer module que não seja mais importado por nenhum package do projeto
+- Adiciona qualquer module que seja importado no código-fonte mas esteja ausente do `go.mod`
+
+Execute `go mod tidy` após remover imports, refatorar packages ou atualizar dependências. Isso evita que o `go.mod` acumule entradas obsoletas e garante que toda dependência listada esteja de fato em uso.
+
+<Callout type="note" title="Execute go mod tidy antes de fazer commit">
+  Um fluxo de trabalho comum é executar `go mod tidy` como último passo antes de
+  abrir um pull request. Isso mantém `go.mod` e `go.sum` precisos, facilita
+  auditorias de dependências e evita dependências fantasmas que só existem na
+  máquina do desenvolvedor.
+</Callout>

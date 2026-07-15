@@ -1,0 +1,307 @@
+---
+title: Queues
+description: Aprenda como queues impõem ordem FIFO para gerenciar dados. Explore as operações enqueue, dequeue e peek, implementações com circular buffer e linked list, e por que queues sustentam task scheduling e BFS.
+slug: queue
+publishedAt: '2026-03-09'
+keywords:
+  [
+    queue,
+    FIFO,
+    enqueue,
+    dequeue,
+    peek,
+    circular buffer,
+    data structures,
+    BFS,
+    breadth-first search,
+    task scheduling,
+    linked list implementation,
+    array implementation,
+    C programming,
+  ]
+---
+
+## O que é uma Queue
+
+Uma **queue** é uma coleção que impõe uma única regra: o primeiro elemento adicionado é o primeiro a ser removido. Isso se chama **FIFO** — First In, First Out.
+
+Pense em uma fila de pessoas esperando em um balcão. A primeira pessoa a chegar é a primeira a ser atendida. Ninguém fura a fila — os recém-chegados vão para o fundo, e as pessoas saem pela frente.
+
+<Example title="A analogia da fila de espera">
+
+Imagine uma fila em uma cafeteria. O primeiro cliente da fila é atendido primeiro. Novos clientes entram no fundo da fila. Não importa o tamanho da fila — a ordem é sempre preservada. Quem espera há mais tempo é atendido a seguir.
+
+Uma queue funciona exatamente assim. O elemento que está na coleção há mais tempo é sempre o próximo a sair.
+
+</Example>
+
+Ao contrário de arrays e linked lists, uma queue não dá acesso a nenhum elemento arbitrário. Ela expõe exatamente duas extremidades: você adiciona pelo rear e remove pelo front.
+
+Essa distinção importa: uma queue é um **abstract data type** (ADT), não uma estrutura de dados concreta. Ela define _quais_ operações são permitidas e quais regras elas seguem — mas não diz nada sobre _como_ os dados são armazenados na memória. Arrays e linked lists são estruturas de dados concretas: elas descrevem um layout específico na memória. Uma queue é um contrato. Você pode cumprir esse contrato usando um circular array, uma linked list, ou qualquer outra coisa que suporte enqueue e dequeue com semântica FIFO.
+
+Uma queue é o espelho de uma stack. Uma stack é LIFO — o último a entrar é o primeiro a sair. Uma queue é FIFO — o primeiro a entrar é o primeiro a sair. Mesma ideia de interface restrita, regra de ordenação oposta.
+
+## As três operações
+
+A interface inteira de uma queue é três operações:
+
+- **enqueue** — adiciona um elemento ao rear
+- **dequeue** — remove o elemento do front
+- **peek** — lê o elemento do front sem removê-lo
+
+É isso. Sem indexação, sem busca, sem inserção no meio. A restrição é a funcionalidade.
+
+### enqueue: adicionando ao rear
+
+`enqueue` coloca um novo elemento no rear da queue. Cada enqueue aumenta o tamanho da queue em um.
+
+<QueueVisualization
+  title="enqueue(99) em [3, 8, 17, 42]:"
+  items={[3, 8, 17, 42]}
+  incoming={99}
+>
+  99 entra pelo rear — 3 ainda é o front e será o próximo a sair
+</QueueVisualization>
+
+Isso é <Tooltip title="Tempo constante" content="O(1) — adicionar ao rear leva o mesmo tempo independente do tamanho da queue">O(1)</Tooltip>. Você sempre adiciona no mesmo lugar.
+
+### dequeue: removendo do front
+
+`dequeue` remove o elemento do front e o retorna. O elemento atrás dele se torna o novo front.
+
+<QueueVisualization
+  title="dequeue() de [3, 8, 17, 42]:"
+  items={[3, 8, 17, 42]}
+  outgoing
+>
+  3 é removido — 8 é agora o front
+</QueueVisualization>
+
+Também <Tooltip title="Tempo constante" content="O(1) — remover do front leva o mesmo tempo independente do tamanho da queue">O(1)</Tooltip>. Você sempre remove do mesmo lugar.
+
+### peek: olhar sem tocar
+
+`peek` (às vezes chamado de `front`) retorna o elemento do front sem removê-lo. Use quando você precisa verificar o que vem a seguir antes de decidir se vai fazer dequeue.
+
+```c
+// Após enqueue(3), enqueue(8), enqueue(17):
+// Queue: front → [3, 8, 17] ← rear
+
+peek() → retorna 3
+// Queue continua: front → [3, 8, 17] ← rear
+```
+
+`peek` também é <Tooltip title="Tempo constante" content="O(1) — ler o elemento do front é um acesso direto">O(1)</Tooltip>.
+
+## Implementação com array
+
+A abordagem óbvia é usar um array com um índice `front` e um índice `rear` — `front` aponta para o elemento a ser removido no dequeue, `rear` aponta para onde o próximo enqueue vai cair.
+
+O problema: ambos os índices avançam e nunca voltam. Após enqueues e dequeues suficientes, `rear` chega ao fim do array mesmo que a parte anterior esteja vazia e desperdiçada.
+
+```
+Após 3 enqueues e 3 dequeues em um array de tamanho 6:
+[ _, _, _, 7, 8, 9 ]
+  ↑        ↑
+ desperdiçado   front
+
+Mais um enqueue moveria rear para fora dos limites — mas 3 slots estão livres!
+```
+
+A solução é um **circular buffer**: enrolar `rear` de volta ao índice 0 quando chega ao fim, usando o operador módulo. O array é tratado como um anel.
+
+```c
+#define MAX 100
+
+struct Queue {
+    int data[MAX];
+    int front;
+    int rear;
+    int size;
+};
+
+void queue_init(struct Queue *q) {
+    q->front = 0;
+    q->rear  = 0;
+    q->size  = 0;
+}
+
+int queue_is_empty(struct Queue *q) {
+    return q->size == 0;
+}
+
+int queue_is_full(struct Queue *q) {
+    return q->size == MAX;
+}
+```
+
+Usar `size` para rastrear a contagem é mais limpo do que calcular a partir de `front` e `rear` — há um caso ambíguo onde `front == rear` pode significar tanto vazia quanto cheia.
+
+```c
+void enqueue(struct Queue *q, int value) {
+    if (queue_is_full(q)) return;  // queue overflow
+    q->data[q->rear] = value;
+    q->rear = (q->rear + 1) % MAX;  // enrola de volta
+    q->size++;
+}
+
+int dequeue(struct Queue *q) {
+    if (queue_is_empty(q)) return -1;  // queue underflow
+    int value = q->data[q->front];
+    q->front = (q->front + 1) % MAX;  // enrola de volta
+    q->size--;
+    return value;
+}
+
+int peek(struct Queue *q) {
+    if (queue_is_empty(q)) return -1;
+    return q->data[q->front];
+}
+```
+
+<Callout type="warning">
+  Dois modos de falha para tratar: **queue overflow** — enqueue em uma queue
+  cheia — e **queue underflow** — dequeue de uma queue vazia. Ambos são bugs
+  silenciosos se não verificados explicitamente. O wrap com módulo os torna
+  especialmente perigosos: uma escrita fora dos limites em um circular buffer
+  sobrescreve silenciosamente dados em um índice válido.
+</Callout>
+
+O circular buffer reutiliza slots conforme a queue avança. O tradeoff é o limite superior fixo: você precisa saber o tamanho máximo da queue com antecedência.
+
+## Implementação com Linked List
+
+Uma linked list elimina a restrição de tamanho fixo. Ao contrário da stack com linked list (que precisava apenas de um pointer `head`), uma queue precisa rastrear as duas extremidades: **head** é o front (dequeue), **tail** é o rear (enqueue).
+
+Ambas as operações continuam O(1) porque você sempre tem um pointer direto para a extremidade que precisa.
+
+```c
+struct Node {
+    int value;
+    struct Node *next;
+};
+
+struct Queue {
+    struct Node *head;  // front — dequeue aqui
+    struct Node *tail;  // rear  — enqueue aqui
+};
+
+void queue_init(struct Queue *q) {
+    q->head = NULL;
+    q->tail = NULL;
+}
+```
+
+```c
+void enqueue(struct Queue *q, int value) {
+    struct Node *node = malloc(sizeof(struct Node));
+    node->value = value;
+    node->next  = NULL;
+    if (q->tail != NULL) q->tail->next = node;
+    q->tail = node;
+    if (q->head == NULL) q->head = node;  // primeiro elemento
+}
+
+int dequeue(struct Queue *q) {
+    if (q->head == NULL) return -1;
+    struct Node *temp = q->head;
+    int value = temp->value;
+    q->head = q->head->next;
+    if (q->head == NULL) q->tail = NULL;  // queue ficou vazia
+    free(temp);
+    return value;
+}
+
+int peek(struct Queue *q) {
+    if (q->head == NULL) return -1;
+    return q->head->value;
+}
+```
+
+<Callout type="info">
+  Isso se baseia no [artigo sobre Linked
+  Lists](/categorias/estruturas-de-dados/artigos/linked-lists): enqueue adiciona
+  no tail (O(1) porque rastreamos o pointer tail), dequeue remove do head (O(1)
+  porque rastreamos o pointer head). Uma queue é uma linked list com acesso
+  restrito exatamente a essas duas extremidades.
+</Callout>
+
+**Escolhendo entre as implementações:**
+
+|                   | Com array (circular)     | Com Linked List                |
+| ----------------- | ------------------------ | ------------------------------ |
+| Tamanho máximo    | Fixo na criação          | Ilimitado                      |
+| Memória           | Compacta, cache-friendly | Espalhada, overhead de pointer |
+| Risco de overflow | Sim (limitado)           | Apenas se a memória acabar     |
+| Alocação          | Nenhuma (pré-alocada)    | Um malloc por enqueue          |
+| Complexidade      | Aritmética com módulo    | Gerenciamento de dois pointers |
+
+Para queues pequenas e limitadas — um buffer de eventos de tamanho fixo, um ring buffer producer-consumer — a versão com array é mais simples e rápida na prática. Para queues ilimitadas onde o tamanho máximo é desconhecido, use a linked list.
+
+## Operações comuns e seus custos
+
+| Operação           | Tempo | Por quê                                             |
+| ------------------ | ----- | --------------------------------------------------- |
+| enqueue            | O(1)  | Sempre adiciona ao rear                             |
+| dequeue            | O(1)  | Sempre remove do front                              |
+| peek               | O(1)  | Leitura direta do elemento do front                 |
+| Busca por valor    | O(n)  | Precisa varrer todos os elementos do front ao rear  |
+| Acesso por posição | O(n)  | Sem índice — precisa fazer dequeue até aquele nível |
+
+As três operações principais são todas O(1). A restrição que torna a queue limitada — apenas front e rear são acessíveis — é exatamente o que a torna rápida.
+
+## Queues no mundo real
+
+### Filas de impressão
+
+O caso de uso original que deu às queues seu nome na computação. Todo documento enviado a uma impressora entra em uma queue. O primeiro documento enviado é o primeiro a ser impresso. Novos trabalhos esperam no rear. A garantia FIFO significa que nenhum trabalho misteriosamente passa na frente dos outros.
+
+### Task scheduling
+
+Os schedulers de sistemas operacionais gerenciam processos usando queues. Quando múltiplos processos estão prontos para executar, eles esperam em uma queue. A CPU executa um de cada vez em ordem de chegada, dando a cada um um time slice antes de passar para o próximo. O round-robin scheduling é uma queue onde os processos removidos via dequeue são reenfileirados após seu slice.
+
+### Breadth-first search
+
+A traversal de grafos usando breadth-first search (BFS) usa uma queue — o contraponto do DFS, que usa uma stack. Ao chegar em um node, faça enqueue de seus vizinhos não visitados. Faça dequeue do próximo node a visitar, repita. A ordem FIFO garante que você explora todos os nodes a distância 1 antes de qualquer um a distância 2, todos a distância 2 antes de qualquer um a distância 3. É assim que algoritmos de menor caminho funcionam em grafos sem peso.
+
+```c
+// BFS explora camada por camada:
+// Início: [A]
+// Camada 1: [B, C]       (vizinhos de A)
+// Camada 2: [D, E, F]    (vizinhos de B e C)
+// Stack (DFS) vai fundo; Queue (BFS) vai largo.
+```
+
+### Event queues
+
+Todo framework de GUI, game loop e servidor de rede processa eventos através de uma queue. Cliques de mouse, pressionamentos de tecla, pacotes recebidos — cada evento é enfileirado conforme chega e removido em ordem quando o programa está pronto para processá-lo. Isso desacopla produtores (o SO entregando eventos) de consumidores (o código da sua aplicação), suavizando picos.
+
+### Producer-consumer
+
+Queues são a solução canônica para o problema producer-consumer: um componente produz itens de trabalho mais rápido ou mais devagar do que outro consome. A queue absorve a diferença. Um servidor web enfileira requests recebidas; um pool de worker threads faz dequeue e as processa. A queue amortece picos e mantém os dois lados rodando em seu ritmo natural.
+
+## Quando Queues ficam aquém
+
+Queues são poderosas exatamente por causa do que se recusam a fazer.
+
+**Sem acesso aleatório.** Você não pode chegar ao 3º elemento sem fazer dequeue do 1º e do 2º primeiro. Se você precisar inspecionar ou modificar elementos em posições arbitrárias, uma queue é a estrutura errada.
+
+**Apenas FIFO.** Queues processam elementos em ordem de chegada. Se alguns elementos são mais urgentes do que outros — um processo de alta prioridade que deve ir para a frente — uma queue simples não consegue expressar isso. Use uma **priority queue**, que ordena elementos por uma chave de prioridade em vez do tempo de chegada.
+
+**Apenas duas extremidades acessíveis.** Se seu problema requer adicionar ou remover de qualquer extremidade — como uma janela deslizante que encolhe de ambos os lados — use um **deque** (double-ended queue). Um deque suporta enqueue e dequeue tanto no front quanto no rear.
+
+**Ruim para busca.** Encontrar um valor específico requer fazer dequeue de tudo à sua frente, o que destrói a ordem original da queue. Use uma estrutura diferente quando busca é a operação principal.
+
+## Resumo
+
+Queues são a estrutura justa mais simples que você pode impor a uma coleção:
+
+- **Disciplina FIFO** — o primeiro elemento que entra é sempre o primeiro a sair
+- **enqueue, dequeue e peek em O(1)** — as três operações principais levam tempo constante
+- **Dois caminhos de implementação** — array circular (limitado, cache-friendly) ou linked list (ilimitado, gerenciamento de dois pointers)
+- **O bloco de construção do scheduler** — todo sistema justo que precisa processar requests em ordem de chegada usa uma queue
+- **A espinha dorsal do BFS** — breadth-first search usa uma queue da mesma forma que DFS usa uma stack
+
+O insight principal é que queues garantem justiça. Uma estrutura de dados sem restrições deixa você reordenar, pular e priorizar livremente — mas essa liberdade força cada chamador a raciocinar sobre ordem explicitamente. Uma queue faz uma única garantia: primeiro a chegar, primeiro a ser atendido. Essa garantia é por que queues aparecem em todo lugar onde sistemas precisam lidar com requests concorrentes sem injustiça.
+
+Queues e stacks são complementares. Entender ambas é entender as duas ordenações fundamentais para processar dados sequenciais: LIFO para reversão last-in-first-out (undo, recursão, backtracking) e FIFO para justiça first-in-first-out (scheduling, BFS, buffering).

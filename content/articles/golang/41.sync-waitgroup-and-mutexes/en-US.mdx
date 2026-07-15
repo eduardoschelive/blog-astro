@@ -1,0 +1,255 @@
+---
+title: sync — WaitGroup and mutexes
+description: Learn how to coordinate goroutine lifetimes with WaitGroup and protect shared state with Mutex and RWMutex.
+slug: sync-waitgroup-and-mutexes
+publishedAt: '2026-05-06'
+keywords:
+  - golang
+  - sync
+  - WaitGroup
+  - Mutex
+  - RWMutex
+  - concurrency
+  - data race
+---
+
+[Goroutines](/en-US/categories/golang/articles/goroutines) make launching concurrent work trivial — a single `go` keyword is all it takes. But launching is only half the story. The other half is knowing when that work finishes, and ensuring that goroutines sharing memory don't corrupt each other's state. The `sync` package is Go's answer to both problems. It provides a small set of precisely designed primitives that cover the most common coordination patterns without the ceremony of lower-level threading APIs.
+
+## The goroutine leak problem
+
+When the main goroutine exits, the Go runtime shuts down the entire program immediately — no cleanup, no waiting. Any goroutines still running are silently terminated. This creates two related problems: work that never completes, and resources that goroutines were holding (open files, database connections, locked mutexes) that are never released.
+
+A naive workaround is to sleep long enough for goroutines to finish:
+
+```go
+package main
+
+import (
+	"fmt"
+	"time"
+)
+
+func process(id int) {
+	time.Sleep(100 * time.Millisecond)
+	fmt.Printf("job %d done\n", id)
+}
+
+func main() {
+	for i := 0; i < 5; i++ {
+		go process(i)
+	}
+	time.Sleep(200 * time.Millisecond) // hope this is long enough...
+}
+
+```
+
+This works by accident. If `process` takes longer than expected, or scheduling is delayed under load, the main goroutine exits before all jobs complete. A fixed sleep is never the right coordination mechanism — it is a guess dressed up as code.
+
+## WaitGroup
+
+`sync.WaitGroup` solves the fan-out/fan-in problem directly: it waits for a collection of goroutines to finish before allowing the caller to proceed.
+
+A WaitGroup is an atomic counter with three operations:
+
+| Method   | Effect                                                         |
+| -------- | -------------------------------------------------------------- |
+| `Add(n)` | Increment the counter by n — called before starting goroutines |
+| `Done()` | Decrement the counter by 1 — called when a goroutine finishes  |
+| `Wait()` | Block until the counter reaches zero                           |
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+	"time"
+)
+
+func process(id int, wg *sync.WaitGroup) {
+	defer wg.Done()
+	time.Sleep(100 * time.Millisecond)
+	fmt.Printf("job %d done\n", id)
+}
+
+func main() {
+	var wg sync.WaitGroup
+
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go process(i, &wg)
+	}
+
+	wg.Wait()
+	fmt.Println("all jobs complete")
+}
+
+```
+
+`defer wg.Done()` inside `process` ensures the counter is decremented even if the function returns early or panics. `wg.Wait()` in `main` blocks until all five goroutines have called `Done`, at which point the counter reaches zero and execution continues.
+
+<Callout type="warning" title="Call Add before the go statement">
+  `Add` must be called before the goroutine starts — specifically, before the
+  `go` keyword. If you call `Add` inside the goroutine, there is a race: `Wait`
+  might check the counter before any goroutine has called `Add`, find zero, and
+  return prematurely. Always pair `Add(1)` with the `go` statement that follows
+  it.
+</Callout>
+
+A `WaitGroup` must not be copied after first use. Always pass it as a pointer (`*sync.WaitGroup`) to goroutines and helper functions — never by value.
+
+## Data races and shared memory
+
+WaitGroup handles goroutine lifetimes. But once multiple goroutines are running concurrently, a second problem emerges: shared state.
+
+Consider a thousand goroutines each incrementing a shared counter:
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+)
+
+func main() {
+	var counter int
+	var wg sync.WaitGroup
+
+	for i := 0; i < 1000; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			counter++ // unsafe: read-modify-write is not atomic
+		}()
+	}
+
+	wg.Wait()
+	fmt.Println(counter) // not necessarily 1000
+}
+
+```
+
+Running this with `go run -race main.go` reports a data race. The increment `counter++` is not a single CPU instruction — it expands to: read the current value, add one, write the result back. If two goroutines read the same value before either writes back, one increment is lost.
+
+**Data races** are among the most insidious bugs in concurrent programming. They produce results that look correct most of the time and fail unpredictably under load or on different hardware. Running tests with `-race` should be standard practice — the overhead is worth it.
+
+## Mutex
+
+`sync.Mutex` ensures that only one goroutine can execute a critical section at a time. Any goroutine that calls `Lock` while another holds the mutex is blocked until `Unlock` is called.
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+)
+
+func main() {
+	var counter int
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	for i := 0; i < 1000; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			mu.Lock()
+			defer mu.Unlock()
+			counter++
+		}()
+	}
+
+	wg.Wait()
+	fmt.Println(counter) // always 1000
+}
+
+```
+
+The convention is to call `defer mu.Unlock()` immediately after `mu.Lock()`. This guarantees the lock is always released when the surrounding function returns, regardless of which code path is taken. It is easy to forget an `Unlock` in every branch — `defer` eliminates that risk entirely.
+
+The code between `Lock` and `Unlock` is the **critical section**: the block that requires exclusive access to shared state. Only one goroutine runs it at a time; all others wait at `Lock`.
+
+<Callout type="note" title="A mutex guards data, not code">
+  Think of a mutex as protection for a specific piece of data, not for lines of
+  code. Keep the mutex close to the data it protects — often as a field in the
+  same struct. This makes the relationship clear and prevents the mutex from
+  being misapplied by code that doesn't know what it's protecting.
+</Callout>
+
+## Critical sections and performance
+
+Every line inside a critical section is serial. Goroutines waiting at `Lock` make no progress until the current holder calls `Unlock`. If the critical section contains slow operations, it becomes a bottleneck that limits the program's parallelism.
+
+The solution is to minimize the critical section: lock only what must be protected, do any expensive work outside the lock, and release as soon as the shared state is stable. This keeps the window of exclusivity short.
+
+For workloads with many more reads than writes, even a minimal mutex creates unnecessary contention: readers that don't modify the data still block each other, even though they could safely run in parallel. This is the motivation for `RWMutex`.
+
+## RWMutex
+
+`sync.RWMutex` is a reader/writer lock. It distinguishes between two modes of access:
+
+- **Read lock** (`RLock` / `RUnlock`): multiple goroutines may hold a read lock simultaneously. Readers do not block each other.
+- **Write lock** (`Lock` / `Unlock`): exclusive. A writer waits for all active readers to finish, and new readers wait while a writer holds the lock.
+
+A shared in-memory cache illustrates the pattern well — lookups are frequent, updates are rare:
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+)
+
+type Cache struct {
+	mu    sync.RWMutex
+	items map[string]string
+}
+
+func (c *Cache) Get(key string) (string, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	v, ok := c.items[key]
+	return v, ok
+}
+
+func (c *Cache) Set(key, value string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.items[key] = value
+}
+
+func main() {
+	cache := &Cache{items: make(map[string]string)}
+	cache.Set("lang", "Go")
+
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			v, _ := cache.Get("lang")
+			fmt.Println(v)
+		}()
+	}
+	wg.Wait()
+}
+
+```
+
+All ten reader goroutines proceed without blocking each other. A concurrent `Set` would wait until active readers release their read locks, and new readers arriving while a writer is waiting are queued — preventing the writer from being starved indefinitely.
+
+<Callout type="note" title="Prefer Mutex unless read contention is proven">
+  `RWMutex` carries more overhead than `Mutex` due to the bookkeeping required
+  for concurrent readers. For balanced read/write workloads or low concurrency,
+  a plain `Mutex` is simpler and often faster. Reach for `RWMutex` when
+  profiling shows lock contention on a demonstrably read-heavy path.
+</Callout>
+
+## What this means in practice
+
+`WaitGroup`, `Mutex`, and `RWMutex` address the two core challenges in concurrent programs: **lifetime** (knowing when goroutines finish) and **safety** (preventing concurrent writes from corrupting shared state).
+
+WaitGroup provides structured fan-out/fan-in. Mutex serializes access to shared data. RWMutex extends that serialization to allow parallel reads where writes are infrequent. These three primitives appear in nearly every non-trivial concurrent Go program, and mastering them is the foundation for everything that follows.

@@ -1,0 +1,177 @@
+---
+title: Embedding
+description: Learn how Go uses embedding to compose structs, promote fields and methods, and satisfy interfaces — without inheritance.
+slug: embedding
+publishedAt: '2026-04-23'
+keywords:
+  - golang
+  - embedding
+  - composition
+  - struct embedding
+  - promotion
+  - method promotion
+  - interface satisfaction
+---
+
+Go is an object-oriented language, but it deliberately leaves out one of OOP's most recognizable features: inheritance. There are no base classes, no `extends` keyword, and no type hierarchy to navigate. What Go gives you instead is composition — and a mechanism called embedding that makes composition feel almost as natural.
+
+## What is embedding
+
+Embedding is a way to include one type inside another by writing the type name without a field name. When you embed a type, all of its exported fields and methods become directly accessible on the containing struct as if they were defined there:
+
+```go
+type Animal struct {
+    Name string
+}
+
+func (a Animal) Speak() string {
+    return a.Name + " makes a sound"
+}
+
+type Dog struct {
+    Animal
+    Breed string
+}
+
+```
+
+`Animal` is embedded inside `Dog`. There is no field name — just the type name. Go automatically creates a field named `Animal` behind the scenes, but the visible effect is that `Dog` now has access to `Name` and `Speak` directly:
+
+```go
+dog := Dog{
+    Animal: Animal{Name: "Rex"},
+    Breed:  "Labrador",
+}
+
+fmt.Println(dog.Name)    // Rex — promoted from Animal
+fmt.Println(dog.Speak()) // Rex makes a sound — promoted from Animal
+fmt.Println(dog.Breed)   // Labrador — defined on Dog directly
+
+```
+
+This is called **promotion**. The fields and methods of the embedded type are lifted to the outer struct's surface. You can still access them explicitly through the embedded type's name if needed: `dog.Animal.Name`.
+
+## Shadowing promoted fields and methods
+
+Promotion is not unconditional. If the outer struct defines a field or method with the same name as one in the embedded type, the outer definition takes precedence and the promoted one is shadowed:
+
+```go
+type Dog struct {
+    Animal
+    Name string // shadows Animal.Name
+}
+
+dog := Dog{
+    Animal: Animal{Name: "Rex"},
+    Name:   "Buddy",
+}
+
+fmt.Println(dog.Name)        // Buddy — Dog.Name shadows Animal.Name
+fmt.Println(dog.Animal.Name) // Rex — accessed explicitly
+
+```
+
+The same applies to methods. If `Dog` defines its own `Speak`, it shadows the promoted one:
+
+```go
+func (d Dog) Speak() string {
+    return d.Name + " barks"
+}
+
+fmt.Println(dog.Speak())        // Buddy barks — Dog's own Speak
+fmt.Println(dog.Animal.Speak()) // Rex makes a sound — Animal's Speak, accessed explicitly
+
+```
+
+Shadowing is intentional — it is the mechanism you use when the outer type needs to override a promoted method. The promoted version is still reachable; you just have to name the embedded type explicitly.
+
+<Callout type="note" title="Ambiguity at equal depth">
+  When two embedded types at the same level both have a field or method with the
+  same name, Go treats it as ambiguous. The compiler will refuse to compile any
+  access via the promoted name. You must always qualify the access with the
+  specific embedded type — `dog.Animal.Name`, not `dog.Name`.
+</Callout>
+
+## Embedding is not inheritance
+
+It is tempting to think of embedding as inheritance, but the two types remain entirely separate. A `Dog` value is not an `Animal`, and Go will not let you use one where the other is expected:
+
+```go
+func describe(a Animal) {
+    fmt.Println("Animal:", a.Name)
+}
+
+dog := Dog{Animal: Animal{Name: "Rex"}, Breed: "Labrador"}
+
+describe(dog)        // compile error: cannot use Dog as Animal
+describe(dog.Animal) // works — you are passing the Animal explicitly
+
+```
+
+This is the fundamental difference from classical inheritance. In a language with inheritance, a `Dog` _is an_ `Animal` and can be passed wherever an `Animal` is expected. In Go, a `Dog` _has an_ `Animal`. The relationship is composition, not substitution.
+
+That distinction might feel limiting at first. In practice, it is a deliberate trade-off. It keeps type relationships explicit, eliminates the fragile base-class problem, and forces you to be clear about how types relate to each other. Two types that happen to share behavior through embedding are still two independent types.
+
+## Satisfying interfaces through embedding
+
+Where embedding becomes especially powerful is interface satisfaction. When you embed a type, its promoted methods become part of the outer struct's method set. This means the outer type automatically satisfies any interface that the embedded type satisfies:
+
+```go
+type Speaker interface {
+    Speak() string
+}
+
+```
+
+`Animal` satisfies `Speaker` because it has a `Speak` method. And because `Dog` embeds `Animal`, `Speak` is promoted into `Dog`'s method set — so `Dog` satisfies `Speaker` too, without any extra code:
+
+```go
+var s Speaker
+
+s = Animal{Name: "Cat"}
+fmt.Println(s.Speak()) // Cat makes a sound
+
+s = Dog{Animal: Animal{Name: "Rex"}, Breed: "Labrador"}
+fmt.Println(s.Speak()) // Rex makes a sound — promoted from Animal
+
+```
+
+If `Dog` defines its own `Speak`, that overrides the promoted one. `Dog` still satisfies `Speaker`, now through its own method rather than the promoted one:
+
+```go
+func (d Dog) Speak() string {
+    return d.Name + " barks"
+}
+
+s = Dog{Animal: Animal{Name: "Rex"}, Breed: "Labrador"}
+fmt.Println(s.Speak()) // Rex barks — Dog's own Speak
+
+```
+
+This is the pattern that makes embedding so practical. You compose a struct from focused, self-contained types, and the interface memberships of each embedded type naturally flow up to the containing struct. A type that wraps a logger, a cache, and a metrics reporter through embedding automatically participates in any interface each of those components satisfies — with no manual delegation required.
+
+<Callout type="note" title="Embedding interfaces">
+  You can also embed an interface type inside a struct. The struct then
+  satisfies the interface, with each method panicking by default unless you
+  provide a concrete implementation for it. This pattern is common in test
+  doubles and adapters — it lets you implement only the interface methods you
+  care about and have the rest panic loudly if accidentally called.
+</Callout>
+
+## Embedding vs named fields
+
+You do not have to embed a type to compose structs. A named field is always an option:
+
+```go
+type Dog struct {
+    animal Animal // named field, not embedded
+    Breed  string
+}
+
+```
+
+With a named field, nothing is promoted. To access `Name`, you must write `dog.animal.Name`. To call `Speak`, you must write `dog.animal.Speak()`. The struct does not automatically satisfy `Speaker`.
+
+The choice comes down to intent. Use a named field when you want to hold a value as an internal implementation detail — not exposing its fields or methods at the outer level. Use embedding when you want the inner type's behavior to become part of the outer type's surface, either for developer convenience or to participate in interfaces without writing delegation methods by hand.
+
+Embedding is Go's answer to the question inheritance was trying to solve: how do you reuse behavior across types? Go's answer is to be explicit — compose types together, promote what you need, and let the type system enforce the boundary between what a type _is_ and what it _has_.

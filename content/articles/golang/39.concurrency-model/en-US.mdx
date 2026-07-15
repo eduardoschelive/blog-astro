@@ -1,0 +1,223 @@
+---
+title: Go's concurrency model
+description: Explore Go's concurrency philosophy, its roots in CSP, and how goroutines, channels, and the select statement form a coherent model for concurrent programs.
+slug: concurrency-model
+publishedAt: '2026-05-05'
+keywords:
+  - golang
+  - concurrency
+  - goroutines
+  - channels
+  - CSP
+  - select
+  - sync
+---
+
+The [previous articles](/en-US/categories/golang/articles/concurrency) established why concurrent programming is hard: race conditions, deadlocks, livelocks, starvation. Those problems are fundamental — they are not bugs in any particular language, but consequences of how programs share access to resources. Different languages address this differently. Go made a deliberate and opinionated choice about which mental model to promote, and understanding that choice explains the design of nearly every concurrency feature in the language.
+
+## Concurrency is context-dependent
+
+Before looking at Go's model, it is worth revisiting why concurrency is used in the first place — and why the answer is not as simple as "for performance."
+
+Concurrency is not inherently faster. A concurrent program that splits work across goroutines still performs the same total computation; the difference is in _how_ that work is scheduled and interleaved. On a single CPU core, goroutines run by time-slicing — only one is active at any moment. The total CPU time consumed does not change. What changes is _responsiveness_: while one goroutine is blocked waiting for I/O, another can run.
+
+This is the first dimension where concurrency pays off: **I/O-bound work**. A web server waiting for a database query, a downloader waiting for a network response, a file processor waiting for a disk read — all of these spend most of their time blocked. Concurrency allows the program to do useful work during that waiting time.
+
+The second dimension is **CPU-bound work on multi-core machines**. When the Go runtime distributes goroutines across multiple OS threads, each running on its own core, work executes in parallel — truly simultaneously. An image pipeline, a bulk data processor, a compiler — these can complete in a fraction of the sequential time when genuinely parallelized.
+
+The third dimension is **program structure**. Even on a single-core machine with no I/O, concurrency can make a program easier to reason about by expressing it as independent agents that react to events and communicate results. The benefit is not speed, but clarity.
+
+<Callout type="note" title="Concurrency encompasses parallelism">
+  Concurrency is the more general concept: a concurrent program *may* run in
+  parallel, but parallel execution is not required. Go's runtime schedules
+  goroutines across available CPU cores automatically. You write a concurrent
+  program; the runtime decides how much of it runs in parallel based on the
+  hardware.
+</Callout>
+
+## Why traditional approaches are difficult
+
+The classic way to write concurrent code in most languages is to share data between threads and protect it with locks. Objects own their state, mutexes guard access to that state, and threads coordinate by acquiring and releasing those locks. This model is familiar, but it does not compose well.
+
+The problem is not that mutexes are wrong — it is that shared mutable state is the root cause of every concurrency hazard covered in the previous articles. Race conditions happen because two threads reach the same data without coordination. Deadlocks happen because threads hold locks while waiting for other locks. Livelocks and starvation are downstream effects of the same competition over shared resources.
+
+In traditional object-oriented code, encapsulation hides _what_ data a type holds, but it does not hide _that_ the data is shared. Two goroutines can hold references to the same object, and as soon as either one calls a method that mutates state, the race begins. The more an object is shared, the more sophisticated its internal locking must be — and sophisticated locking is where deadlocks are born.
+
+The deeper issue is that this model requires you to reason about every possible interleaving of operations across all goroutines simultaneously. For small programs that is manageable. For large, long-lived systems with dozens of goroutines and hundreds of shared objects, it quickly becomes intractable.
+
+## Go and CSP
+
+In 1978, Tony Hoare published _Communicating Sequential Processes_ (CSP), a formal model for concurrent computation. The central idea is simple: instead of sharing memory between processes and coordinating access with locks, processes communicate by passing messages through channels. Shared state is eliminated — or at least minimized — in favor of explicit communication.
+
+Go is directly inspired by CSP. Rob Pike, one of Go's creators, worked on CSP-influenced systems at Bell Labs before designing Go's concurrency model. The language adopts CSP's two core primitives:
+
+- **Goroutines** — independent, sequential processes that run concurrently
+- **Channels** — typed conduits through which goroutines send and receive values
+
+The philosophy is captured in the Go team's often-quoted guideline:
+
+> _"Do not communicate by sharing memory; instead, share memory by communicating."_
+
+This is not a ban on mutexes — Go's `sync` package provides them, and they are appropriate in many situations. It is a shift in default thinking. When two goroutines need to coordinate, the first instinct should be: can we express this as a message? If the answer is yes, channels lead to code that is easier to reason about, because the communication is explicit and visible in the code, not hidden behind a shared variable.
+
+## Goroutines
+
+A goroutine is a function executing independently and concurrently with the rest of the program. You create one with the `go` keyword:
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+)
+
+func main() {
+	var wg sync.WaitGroup
+
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			fmt.Printf("goroutine %d\n", n)
+		}(i)
+	}
+
+	wg.Wait()
+}
+
+```
+
+Each `go func(...)` call creates a new goroutine. The five goroutines run concurrently — their output may appear in any order. The `sync.WaitGroup` ensures `main` waits for all of them before exiting.
+
+The lightweight nature of goroutines is what makes this practical at scale. An OS thread typically starts with a 1–8 MB stack and requires a kernel context switch to schedule. A goroutine starts with roughly 2–4 KB of stack, which the runtime grows dynamically as needed, and scheduling is handled in user space by the Go runtime itself. A program that would be impractical with ten thousand OS threads can comfortably run with ten thousand goroutines.
+
+The Go runtime uses an **M:N scheduling model**: it multiplexes M goroutines onto N OS threads, where N is typically the number of available CPU cores (`GOMAXPROCS`). The scheduler moves goroutines between threads automatically, including when a goroutine blocks on I/O.
+
+## Channels
+
+A channel is a typed conduit for sending and receiving values between goroutines. The `<-` operator is both the send and receive primitive:
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+	ch := make(chan string)
+
+	go func() {
+		ch <- "hello from a goroutine" // send
+	}()
+
+	msg := <-ch // receive — blocks until a value is available
+	fmt.Println(msg)
+}
+
+```
+
+The call `<-ch` blocks until a goroutine sends a value, and `ch <- value` blocks until a goroutine is ready to receive. This blocking behavior is what makes channels a synchronization primitive as well as a communication one: the send and receive naturally coordinate their timing.
+
+Channels compose into pipelines. Each stage reads from one channel, processes the values, and writes to another:
+
+```go
+func generate(nums ...int) <-chan int {
+	out := make(chan int)
+	go func() {
+		for _, n := range nums {
+			out <- n
+		}
+		close(out)
+	}()
+	return out
+}
+
+func square(in <-chan int) <-chan int {
+	out := make(chan int)
+	go func() {
+		for n := range in {
+			out <- n * n
+		}
+		close(out)
+	}()
+	return out
+}
+
+func main() {
+	for result := range square(generate(2, 3, 4)) {
+		fmt.Println(result) // 4, 9, 16
+	}
+}
+
+```
+
+This pipeline — `generate` feeds `square` which feeds `main` — is a concrete example of "sharing memory by communicating." No variable is shared between stages; values flow through channels. Adding a third processing stage requires no changes to the others.
+
+Channels can also **fan out** (one goroutine sends to many) and **fan in** (many goroutines send to one), enabling more complex coordination patterns. We will cover these in depth in a later article.
+
+## The select statement
+
+When a goroutine needs to wait on multiple channels simultaneously, `select` provides the mechanism. It works like a `switch` over channel operations, proceeding with whichever case is ready first:
+
+```go
+select {
+case msg := <-ch1:
+	fmt.Println("from ch1:", msg)
+case msg := <-ch2:
+	fmt.Println("from ch2:", msg)
+}
+
+```
+
+If multiple cases are ready at the same time, `select` picks one at random. If none are ready, it blocks.
+
+A common use is implementing **timeouts**: combining a work channel with `time.After` ensures the program does not block indefinitely waiting for a result that may never arrive.
+
+```go
+select {
+case result := <-workCh:
+	fmt.Println("result:", result)
+case <-time.After(5 * time.Second):
+	fmt.Println("timed out waiting for result")
+}
+
+```
+
+Adding a `default` case makes `select` non-blocking — it executes `default` immediately if no channel is ready. This is useful for checking a channel without committing to waiting.
+
+`select` is what enables Go's cancellation model via the `context` package: a goroutine selects on both its work channel and a context's `Done()` channel, stopping cleanly when the parent signals cancellation. We will explore this fully in a dedicated article.
+
+## Traditional sync primitives
+
+Not every concurrency problem is best expressed with channels. Go's `sync` package provides the classical synchronization primitives for situations where shared state genuinely makes more sense:
+
+- `sync.Mutex` and `sync.RWMutex` for mutual exclusion (covered in the [deadlocks article](/en-US/categories/golang/articles/deadlocks-livelocks-starvation))
+- `sync.WaitGroup` for waiting on a group of goroutines to complete
+- `sync.Once` for running initialization exactly once, regardless of how many goroutines call it
+- `sync.Map` for concurrent-safe map access without manual locking
+- `sync/atomic` for lock-free operations on individual numeric values
+
+```go
+var count int64
+
+// atomic increment — no mutex needed for a single variable
+atomic.AddInt64(&count, 1)
+value := atomic.LoadInt64(&count)
+
+```
+
+The rule of thumb: use channels when the structure of your problem is about passing ownership of data or coordinating sequencing between goroutines. Use `sync` primitives when you have a specific shared resource that multiple goroutines need to read or update in place, and the overhead of a channel would add more complexity than it removes.
+
+These two approaches are not in competition. Real programs often use both: channels to orchestrate high-level workflow between goroutines, and a mutex or atomic to protect a specific counter or cache that several of those goroutines update.
+
+## The pieces together
+
+Go's concurrency model is a deliberate layering of three things:
+
+1. **A simple primitive** — goroutines are cheap enough to use as the basic unit of concurrent work, rather than thread pools or callbacks
+2. **A communication-first design** — channels express coordination explicitly, making the flow of data between concurrent components readable in the code
+3. **An escape hatch** — `sync` and `sync/atomic` are available for cases where shared state with careful locking is the cleaner answer
+
+The philosophy behind this design is that concurrent programs should be easier to write correctly, not just faster. By making communication explicit and shared state optional, Go nudges you toward the kind of concurrency structure that is easier to reason about, test, and debug.
+
+The following articles explore each of these primitives in depth: goroutines, channels, the select statement, and the sync package — each with the full detail that this overview intentionally saved for later.

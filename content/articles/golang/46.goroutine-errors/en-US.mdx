@@ -1,0 +1,208 @@
+---
+title: Handling errors in goroutines
+description: Learn two patterns for propagating errors from concurrent goroutines — the result struct and the separate error channel — and when to choose each.
+slug: goroutine-errors
+publishedAt: '2026-05-09'
+keywords:
+  - golang
+  - goroutines
+  - error handling
+  - concurrency
+  - channels
+  - result struct
+---
+
+A goroutine cannot `return` an error to its caller. The `go` statement fires and forgets: it starts execution on a separate scheduling path, and the function's return values are discarded. If something goes wrong inside the goroutine, the error has nowhere to go — unless you build a path for it explicitly.
+
+This is not a rare edge case. Concurrent code that fetches data, writes to storage, or calls external services needs to communicate failure just as much as sequential code does. Ignoring that reality leads to **silent failures**: the goroutine encounters an error, swallows it, and the caller receives a partial or empty result with no indication that anything went wrong.
+
+The two patterns covered here — the result struct and the separate error channel — are the standard ways to solve this problem.
+
+## The anti-pattern: silent failure
+
+Before looking at the solutions, it is worth being concrete about the problem. Here is code that looks reasonable but silently drops errors:
+
+```go
+func fetchAll(urls []string) []string {
+    results := make([]string, len(urls))
+    var wg sync.WaitGroup
+
+    for i, url := range urls {
+        wg.Add(1)
+        go func(i int, url string) {
+            defer wg.Done()
+            resp, err := http.Get(url)
+            if err != nil {
+                return // error is silently dropped
+            }
+            defer resp.Body.Close()
+            body, _ := io.ReadAll(resp.Body)
+            results[i] = string(body)
+        }(i, url)
+    }
+
+    wg.Wait()
+    return results
+}
+
+```
+
+If any `http.Get` fails, `results[i]` stays as its zero value — an empty string — and `fetchAll` returns a slice with holes in it. The caller has no way to distinguish a successful empty response from a network error. This is the silent failure: the function completes, the caller moves on, and the error is gone.
+
+<Callout type="warning" title="Partial results look like success">
+  Functions that return partial results on error are harder to debug than
+  functions that return no results and a clear error. The caller may not notice
+  the holes until much later, or may act on the corrupted output. Explicit error
+  propagation is always preferable.
+</Callout>
+
+## Pattern 1: the result struct
+
+The cleanest solution for most cases is to define a struct that holds both the result and the error, then send values of that type through a single channel. The goroutine always sends exactly one value — either a result with a nil error, or a zero result with a non-nil error — and the caller ranges over the channel to collect them.
+
+```go
+type fetchResult struct {
+    url  string
+    body []byte
+    err  error
+}
+
+func fetchAll(ctx context.Context, urls []string) []fetchResult {
+    ch := make(chan fetchResult, len(urls))
+
+    for _, url := range urls {
+        go func(url string) {
+            req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+            if err != nil {
+                ch <- fetchResult{url: url, err: err}
+                return
+            }
+            resp, err := http.DefaultClient.Do(req)
+            if err != nil {
+                ch <- fetchResult{url: url, err: err}
+                return
+            }
+            defer resp.Body.Close()
+            body, err := io.ReadAll(resp.Body)
+            ch <- fetchResult{url: url, body: body, err: err}
+        }(url)
+    }
+
+    results := make([]fetchResult, 0, len(urls))
+    for range urls {
+        results = append(results, <-ch)
+    }
+    return results
+}
+
+```
+
+The channel is buffered to `len(urls)`, so each goroutine can send its result without blocking regardless of when the others finish. The `for range urls` loop collects exactly as many values as were sent — one per goroutine — so the channel drains completely and the function returns only after all goroutines have finished.
+
+The caller then iterates over the results and handles successes and failures separately:
+
+```go
+results := fetchAll(ctx, urls)
+for _, r := range results {
+    if r.err != nil {
+        log.Printf("failed to fetch %s: %v", r.url, r.err)
+        continue
+    }
+    process(r.url, r.body)
+}
+
+```
+
+This is straightforward: one channel, one type, one loop. Every goroutine's outcome is accounted for, and neither success nor failure is implicit.
+
+<Callout type="note" title="Always include identifying context in the result">
+  When multiple goroutines run concurrently, results arrive in arbitrary order.
+  Including the URL (or an index, or an ID) in the result struct lets the caller
+  match each outcome to its input without relying on ordering.
+</Callout>
+
+## Pattern 2: separate error channel
+
+An alternative is to use two channels — one for results and one for errors — and have the caller select over both. This pattern shows up when the result type is already defined and you don't want to wrap it in a new struct, or when the error-handling logic is genuinely separate from the result-processing logic.
+
+```go
+func fetchAll(ctx context.Context, urls []string) (<-chan []byte, <-chan error) {
+    results := make(chan []byte, len(urls))
+    errs := make(chan error, len(urls))
+
+    for _, url := range urls {
+        go func(url string) {
+            req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+            if err != nil {
+                errs <- err
+                return
+            }
+            resp, err := http.DefaultClient.Do(req)
+            if err != nil {
+                errs <- err
+                return
+            }
+            defer resp.Body.Close()
+            body, err := io.ReadAll(resp.Body)
+            if err != nil {
+                errs <- err
+                return
+            }
+            results <- body
+        }(url)
+    }
+
+    return results, errs
+}
+
+```
+
+The caller must drain both channels. A common approach is to collect a known number of responses using a counter:
+
+```go
+results, errs := fetchAll(ctx, urls)
+
+for i := 0; i < len(urls); i++ {
+    select {
+    case body := <-results:
+        process(body)
+    case err := <-errs:
+        log.Printf("fetch error: %v", err)
+    }
+}
+
+```
+
+The `select` alternates between the two channels, processing whichever is ready first. After `len(urls)` iterations, all goroutines have sent exactly one message to one of the two channels, and both are fully drained.
+
+<Callout
+  type="warning"
+  title="Every goroutine must send to exactly one channel"
+>
+  In the separate-channel pattern, each goroutine must send a value to either
+  the results channel or the error channel — never both, and never neither. If a
+  goroutine can exit without sending, the collector loop will block forever
+  waiting for a value that never comes.
+</Callout>
+
+## Comparing the two patterns
+
+Both patterns propagate errors correctly. The choice between them is mostly about API clarity and how the calling code wants to consume the output.
+
+|                           | Result struct                     | Separate channels          |
+| ------------------------- | --------------------------------- | -------------------------- |
+| **Channels**              | One                               | Two                        |
+| **Result–error coupling** | Always together                   | Decoupled                  |
+| **Caller loop**           | Single `range` or `for`           | `select` over two channels |
+| **Returned type**         | Custom struct                     | Existing types unchanged   |
+| **Ordering**              | Arbitrary, but explicit via field | Arbitrary, context lost    |
+
+The result struct is usually the better default. It is harder to misuse: the caller receives a value that contains both the outcome and the context for that outcome. There is no way to accidentally drain only one channel and leave goroutines blocked.
+
+The separate error channel makes sense when:
+
+- The result type is already defined and adding a wrapper struct would pollute the API
+- Errors and results are genuinely processed by different parts of the code
+- You are building a pipeline where errors fan in from multiple stages and a dedicated error channel fits naturally into the design
+
+In either case, the key discipline is the same: **every goroutine that can fail must have a guaranteed path for that failure to reach the caller**. Silent failures are not a Go-specific problem — they appear whenever concurrency is combined with ignored errors — but Go's channel model gives you the tools to make every failure explicit.

@@ -1,0 +1,202 @@
+---
+title: Call by value and call by reference
+description: Understand how Go passes arguments to functions, why it is strictly call by value, and how maps and slices appear to behave like references.
+slug: call-by-value-and-reference
+publishedAt: '2026-04-22'
+keywords:
+  - golang
+  - call by value
+  - call by reference
+  - pointers
+  - maps
+  - slices
+  - memory
+---
+
+Every time you call a function, the language has to decide what to give it. Does the function receive the value itself, or a way to reach the original? This decision — call by value versus call by reference — determines whether changes inside the function are visible to the caller. Go has a precise answer: it is strictly call by value, always. But that answer conceals a subtlety that trips up developers coming from other languages, especially when maps and slices are involved.
+
+## Call by value
+
+When a language uses call by value, it passes a **copy** of the argument to the function. The function works with its own private copy, and anything it does to that copy has no effect on the original variable in the caller.
+
+```go
+func double(n int) {
+    n = n * 2
+    fmt.Println("inside:", n) // inside: 20
+}
+
+func main() {
+    x := 10
+    double(x)
+    fmt.Println("outside:", x) // outside: 10
+}
+```
+
+`double` receives a copy of `x`. Multiplying that copy by two changes nothing in `main`. When the function returns, the copy is discarded and `x` is untouched.
+
+Call by value is the default for primitive types in most languages — integers, floats, booleans, and similar. It is simple to reason about: the caller retains full ownership of its variables, and no function can surprise you by modifying something it was only meant to read.
+
+## Call by reference
+
+When a language uses call by reference, it passes the **memory address** of the argument. The function does not get a copy — it gets direct access to the same memory the caller is using. Any modification the function makes is immediately visible in the caller.
+
+Languages like C++ support call by reference explicitly. Java and Python use a form of it for objects: the reference (the address of the object) is copied, not the object itself — a subtlety we will return to when discussing Go.
+
+The difference in practice:
+
+|                         | Call by value              | Call by reference               |
+| ----------------------- | -------------------------- | ------------------------------- |
+| What is passed          | A copy of the value        | The memory address              |
+| Changes inside function | Affect only the local copy | Affect the original variable    |
+| Typical use             | Primitive types            | Large or shared data structures |
+
+## Go: strictly call by value
+
+Go does not have call by reference. Every argument you pass to a function is copied. This is not a simplification — it is the precise rule. Even when you pass a pointer, **the pointer itself is copied**. The function receives its own copy of the address, not a reference to the pointer variable.
+
+```go
+func tryToNilPointer(p *int) {
+    p = nil // only the local copy of the pointer is set to nil
+}
+
+func main() {
+    x := 42
+    ptr := &x
+    tryToNilPointer(ptr)
+    fmt.Println(ptr)  // 0xc0000b4000 — still pointing to x
+    fmt.Println(*ptr) // 42
+}
+```
+
+The function changes its local copy of `p` to `nil`, but the original `ptr` in `main` is unaffected. Two copies of the pointer existed inside the call, and modifying one does not touch the other.
+
+However, if both copies of the pointer hold the same address, both can be used to modify the value at that address:
+
+```go
+func increment(p *int) {
+    *p = *p + 1 // modifies the value at the address both copies share
+}
+
+func main() {
+    x := 0
+    increment(&x)
+    fmt.Println(x) // 1
+}
+```
+
+This is the key distinction: Go is strictly call by value, but values can be addresses. Passing a pointer passes a copy of the address — and a copy of an address still points to the same place.
+
+## Maps
+
+Maps in Go behave in a way that surprises many newcomers: changes made to a map inside a function are visible to the caller, even though Go is call by value. To understand why, you need to know what a map actually is.
+
+A map is not a simple value. It is a **data structure** that holds, among other things, a pointer to the underlying hash table where the key-value pairs live. When you pass a map to a function, Go copies the map header — a small struct — and that copy includes the same pointer to the same hash table.
+
+```go
+func addKey(m map[string]int) {
+    m["new"] = 99
+}
+
+func main() {
+    scores := map[string]int{"alice": 10}
+    addKey(scores)
+    fmt.Println(scores) // map[alice:10 new:99]
+}
+```
+
+Both `main` and `addKey` hold copies of the map header, and both headers point to the same underlying storage. Inserting a key inside the function writes to that shared storage, so the caller sees the change.
+
+<Callout type="note" title="Maps are not reference types">
+  You will often hear maps described as "reference types" in Go. That is a
+  useful mental model, but technically Go does not have reference types. What Go
+  has is values that internally contain pointers. The effect is similar, but the
+  mechanism is copy-of-a-header, not pass-by-reference.
+</Callout>
+
+<Callout type="warning" title="Reassigning a map variable does not propagate to the caller">
+If you assign a brand new map to the parameter inside the function, the caller does not see it. You are only changing which map the local copy of the header points to.
+
+```go
+func replace(m map[string]int) {
+    m = map[string]int{"x": 1} // only the local copy is reassigned
+}
+
+func main() {
+    scores := map[string]int{"alice": 10}
+    replace(scores)
+    fmt.Println(scores) // map[alice:10] — unchanged
+}
+```
+
+</Callout>
+
+## Slices
+
+Slices follow the same pattern as maps, with one important complication. A slice header contains three fields: a **length**, a **capacity**, and a **pointer to the backing array**. When you pass a slice to a function, a copy of this header is made. The copy shares the same backing array.
+
+Modifying an existing element through the local copy writes to the shared backing array and is visible to the caller:
+
+```go
+func zeroFirst(s []int) {
+    s[0] = 0
+}
+
+func main() {
+    nums := []int{1, 2, 3}
+    zeroFirst(nums)
+    fmt.Println(nums) // [0 2 3]
+}
+```
+
+But `append` is different. When `append` needs more capacity than the current backing array provides, it allocates a **new** array, copies the existing elements, and returns a new slice header pointing to the new array. The original backing array in the caller is unaffected.
+
+```go
+func appendItem(s []int) {
+    s = append(s, 99)
+    fmt.Println("inside:", s) // inside: [1 2 3 99]
+}
+
+func main() {
+    nums := []int{1, 2, 3}
+    appendItem(nums)
+    fmt.Println("outside:", nums) // outside: [1 2 3]
+}
+```
+
+The function's local copy of the header gets updated to point to the new array, but `main`'s header still points to the original. The `99` is lost when the function returns.
+
+If you need a function to grow a slice and have the caller see the result, return the new slice and assign it at the call site:
+
+```go
+func appendItem(s []int) []int {
+    return append(s, 99)
+}
+
+func main() {
+    nums := []int{1, 2, 3}
+    nums = appendItem(nums)
+    fmt.Println(nums) // [1 2 3 99]
+}
+```
+
+<Callout type="note" title="append within existing capacity">
+  If the slice has enough capacity to hold the new element without growing,
+  `append` writes into the existing backing array and does not allocate. In this
+  case, both the caller's and the function's copy of the header see the same
+  underlying data. This edge case is a source of subtle bugs — it is safer to
+  always treat the return value of `append` as the authoritative slice.
+</Callout>
+
+## Putting it together
+
+Go's call-by-value rule is uniform and consistent. What creates the appearance of reference semantics for maps and slices is that their headers contain pointers to shared storage. Understanding this model explains every observable behavior:
+
+| Type                     | What is copied                | Mutations visible to caller? | Reassignment visible? |
+| ------------------------ | ----------------------------- | ---------------------------- | --------------------- |
+| `int`, `bool`, `string`  | The value itself              | No                           | No                    |
+| Pointer (`*T`)           | The address                   | Yes (via `*p`)               | No                    |
+| Map                      | Header + shared table pointer | Yes                          | No                    |
+| Slice                    | Header (len, cap, pointer)    | Yes (index writes)           | No                    |
+| Slice + `append` (grows) | Header — new array allocated  | No                           | No                    |
+
+The practical takeaway: treat Go as strictly call by value, understand that some values happen to contain addresses, and you will never be surprised by what a function can or cannot modify.

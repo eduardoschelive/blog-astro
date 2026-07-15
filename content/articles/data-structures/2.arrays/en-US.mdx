@@ -1,0 +1,265 @@
+---
+title: Arrays
+description: Learn how arrays store elements in contiguous memory for instant access. Understand indexing, memory layout, and the tradeoffs that make arrays the foundation of most data structures.
+slug: arrays
+publishedAt: '2026-03-02'
+keywords:
+  [
+    arrays,
+    data structures,
+    contiguous memory,
+    indexing,
+    random access,
+    time complexity,
+    static arrays,
+    dynamic arrays,
+    array operations,
+    memory layout,
+    C programming,
+  ]
+---
+
+## What is an Array
+
+An array is the simplest and most fundamental data structure. It's a collection of elements stored **side by side** in memory, like books arranged on a shelf. Each element has a number (called an index) that identifies its position, starting from zero.
+
+```c
+int grades[5] = {85, 92, 78, 95, 88};
+//               [0] [1] [2] [3] [4]
+```
+
+What makes arrays special is this guarantee: all elements live in **contiguous memory**. No gaps, no scattered pieces - just one continuous block of data. This simple property has profound implications for performance.
+
+<Example title="The bookshelf analogy">
+
+Imagine a bookshelf where each slot is exactly the same width. If you know a book is in slot #7, you don't need to count from the beginning - you can reach directly to that position. That's how arrays work. The computer calculates exactly where each element lives and jumps straight to it.
+
+</Example>
+
+## Why Arrays Are Fast
+
+When you ask for `grades[3]`, the computer doesn't search through the array. Instead, it does a simple calculation:
+
+**address = start + (index × size of each element)**
+
+If the array starts at memory address 1000 and each integer takes 4 bytes, then element [3] is at address 1000 + (3 × 4) = 1012. One calculation, one memory access, done. This is why array access is <Tooltip title="Big O notation" content="Constant time - the operation takes the same time regardless of how many elements the array contains">O(1)</Tooltip> - it takes the same time whether your array has 10 elements or 10 million.
+
+<MemoryVisualization
+  title="RAM Memory:"
+  type="contiguous"
+  blocks={[
+    { address: '0x1000', value: 85, label: 'index 0' },
+    { address: '0x1004', value: 92, label: 'index 1' },
+    { address: '0x1008', value: 78, label: 'index 2' },
+    { address: '0x100C', value: 95, label: 'index 3' },
+  ]}
+>
+  <span className="text-danger">grades[]:</span>{' '}
+  <span className="text-success">85, 92, 78, 95</span>
+</MemoryVisualization>
+
+### The Cache Advantage
+
+Modern CPUs don't just fetch the byte you asked for - they grab a whole chunk of nearby memory and store it in a fast "cache" close to the processor. When your data is contiguous like in an array, accessing one element often brings its neighbors into cache for free.
+
+This is why iterating through an array sequentially is blazingly fast - each element is likely already waiting in cache by the time you need it. Scattered data structures like linked lists lose this advantage, as each element might be anywhere in memory.
+
+## The Price of Simplicity
+
+Arrays aren't perfect. Their rigid structure creates significant limitations:
+
+### The Insertion Problem
+
+What happens when you need to insert a value in the middle of an array? Every element after that position must shift one slot to the right to make room. Insert at position 0? The entire array shifts.
+
+<MemoryVisualization
+  title="Inserting 90 at index 1:"
+  type="contiguous"
+  blocks={[
+    { address: '0x1000', value: 85, label: 'stays' },
+    { address: '0x1004', value: 90, label: 'new!' },
+    { address: '0x1008', value: 92, label: 'shifted' },
+    { address: '0x100C', value: 78, label: 'shifted' },
+  ]}
+>
+  Before: [85, 92, 78] → After: [85, 90, 92, 78]
+</MemoryVisualization>
+
+For an array with a million elements, inserting at the beginning means moving a million elements. This is <Tooltip title="Linear time" content="O(n) - the time grows proportionally with the number of elements">O(n)</Tooltip> - the worst case for a simple operation.
+
+### The Fixed Size Dilemma
+
+When you create an array, you must decide its size upfront. Too small, and you run out of space. Too large, and you waste memory. This tension leads to a fundamental question: what if you don't know how many elements you'll need?
+
+## Static vs Dynamic Arrays
+
+### Static Arrays: Fixed at Birth
+
+In C, when you write `int numbers[100]`, you're asking the compiler to reserve exactly 100 integer slots. This memory comes from the "stack" - a fast, automatically-managed region that gets cleaned up when your function returns.
+
+```c
+void process_grades() {
+    int grades[30];  // Space for exactly 30 grades
+    // Use the array...
+}  // Memory automatically freed here
+```
+
+Static arrays are simple and fast, but inflexible. If 31 students show up, you're out of luck.
+
+### Dynamic Arrays: Growing on Demand
+
+The solution is to allocate memory from the "heap" - a larger region where you control when memory is allocated and freed. In C, this means using `malloc`:
+
+```c
+int *grades = malloc(30 * sizeof(int));  // Start with 30 slots
+// Later, if you need more...
+grades = realloc(grades, 60 * sizeof(int));  // Double the space
+```
+
+But managing this manually is tedious and error-prone. That's why most languages provide **dynamic arrays** that grow automatically - `std::vector` in C++, `ArrayList` in Java, `list` in Python, or plain arrays in JavaScript.
+
+### How Dynamic Arrays Grow
+
+When a dynamic array fills up, it doesn't just add one more slot. Instead, it typically **doubles** its capacity, copies all elements to the new larger space, and frees the old memory.
+
+Why double? It's a balance between wasted space and copying overhead. If you grow by just one element each time, you'd copy the entire array for every single insertion. By doubling, you ensure that the **average** cost of insertion stays constant - even though occasional insertions trigger expensive resize operations.
+
+<Example title="The math of doubling">
+
+Imagine inserting 1000 elements into an array that starts with capacity 1:
+
+- Copy 1 element when growing to capacity 2
+- Copy 2 elements when growing to capacity 4
+- Copy 4 elements when growing to capacity 8
+- ...and so on until capacity 1024
+
+Total copies: 1 + 2 + 4 + 8 + ... + 512 = 1023
+
+That's roughly n copies for n insertions - an average of just 1 copy per insertion! This is called **amortized O(1)** time.
+
+</Example>
+
+## Common Operations and Their Costs
+
+Understanding when arrays are fast and when they're slow is crucial for making good design decisions:
+
+| Operation             | Time     | Why                                         |
+| --------------------- | -------- | ------------------------------------------- |
+| Access by index       | O(1)     | Direct calculation to memory address        |
+| Update by index       | O(1)     | Same as access - just write instead of read |
+| Insert at end         | O(1)\*   | Just place element (if space available)     |
+| Insert at beginning   | O(n)     | Must shift all elements right               |
+| Insert in middle      | O(n)     | Must shift elements after insertion point   |
+| Delete from end       | O(1)     | Just decrease the size counter              |
+| Delete from beginning | O(n)     | Must shift all elements left                |
+| Search (unsorted)     | O(n)     | Must check each element                     |
+| Search (sorted)       | O(log n) | Binary search cuts space in half each step  |
+
+\*For dynamic arrays, occasional resizing makes this "amortized O(1)"
+
+## Searching in Arrays
+
+### Linear Search: The Obvious Way
+
+When you don't know where an element is, the straightforward approach is to check each position one by one:
+
+```c
+int find_grade(int grades[], int size, int target) {
+    for (int i = 0; i < size; i++) {
+        if (grades[i] == target) return i;
+    }
+    return -1;  // Not found
+}
+```
+
+This is <Tooltip title="Linear time" content="O(n) - checking n elements takes n steps">O(n)</Tooltip>. For a million elements, you might need a million comparisons.
+
+### Binary Search: Divide and Conquer
+
+If your array is **sorted**, you can do much better. Instead of checking every element, check the middle one. If your target is smaller, eliminate the entire upper half. If larger, eliminate the lower half. Repeat until found.
+
+Each comparison eliminates half the remaining elements. After 20 comparisons, you've narrowed down from a million elements to just one. This is <Tooltip title="Logarithmic time" content="O(log n) - doubling the input only adds one more step">O(log n)</Tooltip> - extraordinarily efficient.
+
+<Example title="Binary search in action">
+
+Searching for 42 in [10, 20, 30, 40, 50, 60, 70]:
+
+1. Check middle (40). Target 42 is larger → search right half [50, 60, 70]
+2. Check middle (60). Target 42 is smaller → search left half [50]
+3. Check 50. Not 42 → not found
+
+Only 3 comparisons for 7 elements. Linear search might have needed all 7.
+
+</Example>
+
+The catch? Binary search requires a sorted array. If you're frequently searching but rarely inserting, it might be worth keeping your array sorted. If you're frequently inserting, the cost of maintaining sort order might outweigh the search benefits.
+
+## Multi-dimensional Arrays
+
+Arrays can have multiple dimensions, creating grids, cubes, or even higher-dimensional structures.
+
+### 2D Arrays: Tables and Matrices
+
+A 2D array is like a spreadsheet - rows and columns. In memory, it's still stored as a single contiguous block, typically in "row-major order" (all of row 0, then all of row 1, etc.).
+
+```c
+int matrix[3][4] = {
+    {1, 2, 3, 4},     // Row 0
+    {5, 6, 7, 8},     // Row 1
+    {9, 10, 11, 12}   // Row 2
+};
+```
+
+<MemoryVisualization
+  title="2D Array in Memory (Row-Major):"
+  type="contiguous"
+  blocks={[
+    { address: '0x1000', value: 1, label: '[0][0]' },
+    { address: '0x1004', value: 2, label: '[0][1]' },
+    { address: '0x1008', value: 3, label: '[0][2]' },
+    { address: '0x100C', value: 4, label: '[0][3]' },
+    { address: '0x1010', value: 5, label: '[1][0]' },
+    { address: '0x1014', value: 6, label: '[1][1]' },
+  ]}
+>
+  Rows are laid out one after another
+</MemoryVisualization>
+
+This layout has performance implications. Iterating through a row (consecutive memory) is fast. Iterating through a column (jumping by row-width each time) is slower because it's not cache-friendly.
+
+## Arrays in the Real World
+
+Arrays are everywhere in computing:
+
+- **Images** are 2D arrays of pixels
+- **Audio** is an array of amplitude samples over time
+- **Text strings** are arrays of characters
+- **Databases** use arrays internally for columnar storage
+- **Graphics cards** process arrays of vertices and pixels in parallel
+
+The array's simplicity and predictable memory access patterns make it the default choice when you need to store a sequence of similar items.
+
+## When Arrays Fall Short
+
+Despite their ubiquity, arrays aren't always the right choice:
+
+**Need frequent insertions/deletions in the middle?** Consider a linked list - it can insert or delete in O(1) if you have a reference to the position.
+
+**Need fast lookups by value?** A hash table provides O(1) average-case lookups, while unsorted arrays require O(n).
+
+**Need to maintain sorted order with frequent changes?** A balanced tree (like a red-black tree) keeps elements sorted while supporting O(log n) insertions and deletions.
+
+**Unknown or highly variable size?** While dynamic arrays handle this, if size changes dramatically (like from 10 to 10,000 back to 10), you might want a structure that releases memory more eagerly.
+
+## Summary
+
+Arrays are deceptively simple. A continuous block of memory with indexed access seems almost too basic to be interesting. Yet this simplicity is their strength:
+
+- **Instant access** to any element via index calculation
+- **Cache-friendly** sequential access patterns
+- **Minimal overhead** - just the data, no extra pointers or metadata
+- **Predictable performance** - no surprises, no worst cases hiding in normal operations
+
+The tradeoff is rigidity. Arrays want to be a certain size, and they resist changes to their structure. Understanding this tradeoff - fast access versus flexible modification - is the first step toward choosing the right data structure for each problem you face.
+
+Every other data structure you'll learn builds on or reacts against arrays. Linked lists sacrifice access speed for insertion flexibility. Hash tables use arrays internally but add a layer of indirection. Trees organize data hierarchically but often store nodes in array-backed memory pools. Arrays are the foundation - master them, and the rest becomes clearer.

@@ -1,0 +1,239 @@
+---
+title: Prevenindo goroutine leaks
+description: Aprenda como goroutines vazam, por que o GC não pode ajudar e como os padrões de done channel e context garantem um caminho de saída para toda goroutine.
+slug: vazamentos-de-goroutine
+publishedAt: '2026-05-06'
+keywords:
+  - golang
+  - goroutines
+  - goroutine leak
+  - context
+  - cancelamento
+  - concorrência
+---
+
+Goroutines são baratas — alguns kilobytes de stack e alguns microssegundos para iniciar. Essa leveza é intencional: ela permite lançar milhares delas sem se preocupar com overhead. Mas essa facilidade tem um lado sombrio. Por serem tão simples de criar, é igualmente simples criá-las sem pensar em como — ou se — elas algum dia vão parar.
+
+O garbage collector do Go pode recuperar memória que não está mais acessível. O stack de uma goroutine bloqueada e todas as variáveis capturadas pelo seu closure ainda são acessíveis — pela própria goroutine. O GC não vai coletá-las. Uma goroutine parada para sempre é uma residente permanente do seu processo: ela consome memória, retém quaisquer recursos que capturou e impede que esses recursos sejam liberados.
+
+Isso é um **goroutine leak**: uma goroutine sem caminho de terminação.
+
+## Como goroutines terminam
+
+Quem cria uma goroutine é responsável pelo seu ciclo de vida. O runtime não vai recuperá-la, e nenhuma outra parte vai pará-la por você. Com isso em mente, existem exatamente três formas legítimas de uma goroutine encerrar:
+
+**O trabalho atribuído está concluído.** A goroutine termina sua tarefa e sua função retorna. É a saída mais simples e natural.
+
+```go
+go func() {
+    result := compute()
+    results <- result
+    // função retorna — goroutine encerra de forma limpa
+}()
+
+```
+
+**Um erro é encontrado.** A goroutine encontra uma condição da qual não consegue se recuperar, reporta o erro por um channel ou outro mecanismo, e retorna.
+
+```go
+go func() {
+    data, err := fetchData()
+    if err != nil {
+        errCh <- err
+        return // goroutine encerra com erro
+    }
+    results <- process(data)
+}()
+
+```
+
+**O pai sinaliza a terminação.** A goroutine é de longa duração — ela fica em loop indefinidamente aguardando trabalho — e o caller precisa explicitamente dizer a ela para parar. Sem esse sinal, a goroutine não tem como saber que não é mais necessária.
+
+Sem ao menos um desses caminhos, uma goroutine jamais vai encerrar.
+
+## Como um leak se parece
+
+O padrão de leak mais comum é uma goroutine bloqueada em um receive de channel sem remetente:
+
+```go
+func doWork() {
+    ch := make(chan int)
+    go func() {
+        val := <-ch         // bloqueia para sempre — ninguém envia
+        fmt.Println(val)
+    }()
+    // doWork retorna; ch não é mais referenciado externamente,
+    // mas a goroutine ainda mantém uma referência a ch e está parada nele
+}
+
+```
+
+`doWork` cria um channel sem buffer, lança uma goroutine que lê dele e retorna sem nunca enviar nada. O caller descarta o channel, mas a goroutine ainda mantém uma referência interna a ele. O GC enxerga o channel como acessível e não o coleta. A goroutine permanece parada em `<-ch` indefinidamente.
+
+O mesmo problema aparece no lado do send:
+
+```go
+func producer() <-chan int {
+    ch := make(chan int)
+    go func() {
+        for i := 0; ; i++ {
+            ch <- i // bloqueia se ninguém estiver lendo
+        }
+    }()
+    return ch
+}
+
+func main() {
+    ch := producer()
+    fmt.Println(<-ch) // lê o primeiro valor e descarta ch
+    // a goroutine producer está agora bloqueada em ch <- 1 para sempre
+}
+
+```
+
+`main` lê um valor e descarta o channel. A goroutine producer tenta enviar o próximo valor, não encontra receptor e fica parada. Não há mecanismo para encerrá-la. A goroutine vazou.
+
+<Callout type="warning" title="Leaks se acumulam sob carga">
+  Uma única goroutine vazada pode custar apenas alguns kilobytes. Mas um
+  servidor que processa milhares de requisições por minuto, cada uma vazando uma
+  goroutine, vai acumular dezenas de milhares de goroutines paradas. A memória
+  cresce constantemente. Recursos são retidos mais tempo do que o esperado. O
+  que parece um pequeno descuido torna-se um problema de confiabilidade.
+</Callout>
+
+## Prevenindo leaks: o done channel
+
+A solução canônica para o terceiro caminho de terminação — terminação sinalizada pelo pai — é o done channel. O caller cria um channel e o passa para a goroutine. Quando a goroutine deve parar, o caller fecha o channel. A goroutine monitora isso em um loop com `select`:
+
+```go
+func producer(done <-chan struct{}) <-chan int {
+    ch := make(chan int)
+    go func() {
+        defer close(ch)
+        for i := 0; ; i++ {
+            select {
+            case ch <- i:
+            case <-done:
+                return
+            }
+        }
+    }()
+    return ch
+}
+
+func main() {
+    done := make(chan struct{})
+    ch := producer(done)
+
+    fmt.Println(<-ch) // lê um valor
+    close(done)       // sinaliza o producer para parar
+    // a goroutine producer vai retornar na próxima iteração do select
+}
+
+```
+
+Fechar `done` torna o case `<-done` no `select` imediatamente pronto. Na próxima iteração do loop, a goroutine escolhe esse case e retorna. `defer close(ch)` dispara na saída, sinalizando para consumidores downstream que o channel está esgotado.
+
+O done channel é tipado como `<-chan struct{}` (somente leitura, tamanho zero) no parâmetro da goroutine. Isso é deliberado: a goroutine não consegue fechá-lo acidentalmente, e o channel não carrega dados — seu único papel é como sinal.
+
+<Callout type="note" title="Feche pelo caller, não pela goroutine">
+  Apenas o caller deve fechar `done`. É sempre o caller que sabe quando uma
+  goroutine não é mais necessária. Se a goroutine fechasse seu próprio done
+  channel, ela estaria decidindo seu próprio destino — anulando o propósito do
+  padrão.
+</Callout>
+
+## Prevenindo leaks: context.Context
+
+O done channel é um mecanismo manual e ponto-a-ponto. A biblioteca padrão do Go oferece uma abstração de nível mais alto para o mesmo problema: `context.Context`.
+
+Um `Context` carrega um sinal de cancelamento, um deadline opcional e pares chave-valor opcionais. Criticamente, o cancelamento se propaga pela árvore de contextos: quando um contexto pai é cancelado, todos os contextos derivados dele também são cancelados. Isso torna o `context` a ferramenta certa quando o cancelamento precisa fluir por múltiplas goroutines ou limites de função.
+
+```go
+func worker(ctx context.Context, jobs <-chan int) {
+    for {
+        select {
+        case j, ok := <-jobs:
+            if !ok {
+                return
+            }
+            fmt.Println("processing", j)
+        case <-ctx.Done():
+            fmt.Println("cancelled:", ctx.Err())
+            return
+        }
+    }
+}
+
+func main() {
+    ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+    defer cancel()
+
+    jobs := make(chan int, 5)
+    go worker(ctx, jobs)
+
+    for i := 0; i < 5; i++ {
+        jobs <- i
+    }
+}
+
+```
+
+`context.WithTimeout` retorna um contexto que se cancela automaticamente após dois segundos. Quando cancela, `ctx.Done()` é fechado — exatamente como o done channel manual, mas agora o runtime gerencia o timer. `ctx.Err()` diz à goroutine por que foi cancelada: `context.DeadlineExceeded` para timeouts, `context.Canceled` para cancelamento explícito.
+
+`defer cancel()` aparece imediatamente após `WithTimeout`. Isso não é opcional: mesmo que o timeout dispare naturalmente, chamar `cancel` libera o timer interno e os recursos associados. Ignorá-lo causa um vazamento do timer.
+
+<Callout type="warning" title="Sempre use defer cancel">
+  `ctx, cancel := context.WithTimeout(...)` seguido imediatamente de `defer
+  cancel()` não é código boilerplate que pode ser omitido. Sem ele, cada chamada
+  vaza uma goroutine e um timer dentro do pacote context — mesmo que sua própria
+  goroutine encerre de forma limpa.
+</Callout>
+
+## Detectando leaks
+
+Goroutine leaks são invisíveis até que se tornem visíveis — geralmente como um aumento lento e constante no uso de memória ou no número de goroutines sob tráfego sustentado.
+
+`runtime.NumGoroutine()` retorna o número de goroutines atualmente ativas. Em testes, você pode comparar a contagem antes e depois de executar o código sob teste:
+
+```go
+func TestNoLeak(t *testing.T) {
+    before := runtime.NumGoroutine()
+
+    done := make(chan struct{})
+    go worker(done)
+    close(done)
+
+    time.Sleep(10 * time.Millisecond) // dá tempo para a goroutine encerrar
+
+    after := runtime.NumGoroutine()
+    if after > before {
+        t.Errorf("goroutine leak: %d antes, %d depois", before, after)
+    }
+}
+
+```
+
+O `time.Sleep` é uma aproximação grosseira — o encerramento de uma goroutine não é síncrono com `close(done)`. Para detecção precisa, sinalize a conclusão via `sync.WaitGroup` antes de fazer a segunda medição.
+
+Para uma solução mais ergonômica, o pacote `goleak` (`github.com/uber-go/goleak`) se integra ao pacote de testes e reporta goroutines que sobrevivem ao teste:
+
+```go
+func TestMain(m *testing.M) {
+    goleak.VerifyTestMain(m)
+}
+
+```
+
+Com `VerifyTestMain`, qualquer teste que deixe uma goroutine rodando após seu retorno vai falhar com uma descrição clara da goroutine vazada — seu stack trace, local de criação e a chamada bloqueante em que está presa.
+
+## Um checklist para cada goroutine
+
+Antes de lançar uma goroutine, confirme:
+
+1. **Saída natural** — a função retorna quando o trabalho está concluído?
+2. **Saída por erro** — ela retorna (em vez de bloquear) quando algo dá errado?
+3. **Caminho de cancelamento** — há um done channel ou `context.Context` que o caller pode usar para encerrá-la?
+4. **Responsabilidade do caller** — alguém está de fato chamando `close(done)` ou `cancel()` quando a goroutine não é mais necessária?
+
+Se qualquer um desses pontos estiver faltando, a goroutine pode vazar. O custo de responder a essas perguntas uma vez, no momento em que você escreve o `go`, é muito menor do que diagnosticar um vazamento de memória em produção semanas depois.

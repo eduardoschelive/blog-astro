@@ -1,0 +1,265 @@
+---
+title: Arrays
+description: Aprenda como arrays armazenam elementos em memória contígua para acesso instantâneo. Entenda indexação, layout de memória e os tradeoffs que fazem arrays a base da maioria das estruturas de dados.
+slug: arrays
+publishedAt: '2026-03-02'
+keywords:
+  [
+    arrays,
+    estruturas de dados,
+    memória contígua,
+    indexação,
+    acesso aleatório,
+    complexidade de tempo,
+    arrays estáticos,
+    arrays dinâmicos,
+    operações com arrays,
+    layout de memória,
+    programação C,
+  ]
+---
+
+## O que é um Array
+
+Um array é a estrutura de dados mais simples e fundamental. É uma coleção de elementos armazenados **lado a lado** na memória, como livros organizados em uma prateleira. Cada elemento tem um número (chamado índice) que identifica sua posição, começando do zero.
+
+```c
+int notas[5] = {85, 92, 78, 95, 88};
+//             [0] [1] [2] [3] [4]
+```
+
+O que torna arrays especiais é essa garantia: todos os elementos vivem em **memória contígua**. Sem lacunas, sem pedaços espalhados - apenas um bloco contínuo de dados. Essa propriedade simples tem implicações profundas para performance.
+
+<Example title="A analogia da estante">
+
+Imagine uma estante onde cada espaço tem exatamente a mesma largura. Se você sabe que um livro está no espaço #7, não precisa contar desde o início - pode alcançar diretamente aquela posição. É assim que arrays funcionam. O computador calcula exatamente onde cada elemento vive e pula direto para lá.
+
+</Example>
+
+## Por que Arrays São Rápidos
+
+Quando você pede `notas[3]`, o computador não procura pelo array. Em vez disso, faz um cálculo simples:
+
+**endereço = início + (índice × tamanho de cada elemento)**
+
+Se o array começa no endereço de memória 1000 e cada inteiro ocupa 4 bytes, então o elemento [3] está no endereço 1000 + (3 × 4) = 1012. Um cálculo, um acesso à memória, pronto. É por isso que acesso a arrays é <Tooltip title="Notação Big O" content="Tempo constante - a operação leva o mesmo tempo independente de quantos elementos o array contém">O(1)</Tooltip> - leva o mesmo tempo seja seu array de 10 elementos ou 10 milhões.
+
+<MemoryVisualization
+  title="Memória RAM:"
+  type="contiguous"
+  blocks={[
+    { address: '0x1000', value: 85, label: 'índice 0' },
+    { address: '0x1004', value: 92, label: 'índice 1' },
+    { address: '0x1008', value: 78, label: 'índice 2' },
+    { address: '0x100C', value: 95, label: 'índice 3' },
+  ]}
+>
+  <span className="text-danger">notas[]:</span>{' '}
+  <span className="text-success">85, 92, 78, 95</span>
+</MemoryVisualization>
+
+### A Vantagem do Cache
+
+CPUs modernas não buscam apenas o byte que você pediu - elas pegam um bloco inteiro de memória próxima e armazenam em um "cache" rápido perto do processador. Quando seus dados são contíguos como em um array, acessar um elemento frequentemente traz seus vizinhos para o cache de graça.
+
+É por isso que iterar por um array sequencialmente é incrivelmente rápido - cada elemento provavelmente já está esperando no cache quando você precisa dele. Estruturas de dados espalhadas como linked lists perdem essa vantagem, já que cada elemento pode estar em qualquer lugar da memória.
+
+## O Preço da Simplicidade
+
+Arrays não são perfeitos. Sua estrutura rígida cria limitações significativas:
+
+### O Problema da Inserção
+
+O que acontece quando você precisa inserir um valor no meio de um array? Cada elemento após aquela posição deve deslocar um espaço para a direita para abrir espaço. Inserir na posição 0? O array inteiro desloca.
+
+<MemoryVisualization
+  title="Inserindo 90 no índice 1:"
+  type="contiguous"
+  blocks={[
+    { address: '0x1000', value: 85, label: 'fica' },
+    { address: '0x1004', value: 90, label: 'novo!' },
+    { address: '0x1008', value: 92, label: 'deslocado' },
+    { address: '0x100C', value: 78, label: 'deslocado' },
+  ]}
+>
+  Antes: [85, 92, 78] → Depois: [85, 90, 92, 78]
+</MemoryVisualization>
+
+Para um array com um milhão de elementos, inserir no início significa mover um milhão de elementos. Isso é <Tooltip title="Tempo linear" content="O(n) - o tempo cresce proporcionalmente com o número de elementos">O(n)</Tooltip> - o pior caso para uma operação simples.
+
+### O Dilema do Tamanho Fixo
+
+Quando você cria um array, deve decidir seu tamanho antecipadamente. Muito pequeno e você fica sem espaço. Muito grande e você desperdiça memória. Essa tensão leva a uma questão fundamental: e se você não souber quantos elementos vai precisar?
+
+## Arrays Estáticos vs Dinâmicos
+
+### Arrays Estáticos: Fixos desde o Nascimento
+
+Em C, quando você escreve `int numeros[100]`, está pedindo ao compilador para reservar exatamente 100 espaços de inteiros. Essa memória vem da "stack" - uma região rápida e gerenciada automaticamente que é limpa quando sua função retorna.
+
+```c
+void processar_notas() {
+    int notas[30];  // Espaço para exatamente 30 notas
+    // Usa o array...
+}  // Memória automaticamente liberada aqui
+```
+
+Arrays estáticos são simples e rápidos, mas inflexíveis. Se 31 alunos aparecerem, você está sem sorte.
+
+### Arrays Dinâmicos: Crescendo sob Demanda
+
+A solução é alocar memória do "heap" - uma região maior onde você controla quando a memória é alocada e liberada. Em C, isso significa usar `malloc`:
+
+```c
+int *notas = malloc(30 * sizeof(int));  // Começa com 30 espaços
+// Depois, se precisar de mais...
+notas = realloc(notas, 60 * sizeof(int));  // Dobra o espaço
+```
+
+Mas gerenciar isso manualmente é tedioso e propenso a erros. É por isso que a maioria das linguagens fornece **arrays dinâmicos** que crescem automaticamente - `std::vector` em C++, `ArrayList` em Java, `list` em Python, ou arrays simples em JavaScript.
+
+### Como Arrays Dinâmicos Crescem
+
+Quando um array dinâmico enche, ele não adiciona apenas mais um espaço. Em vez disso, tipicamente **dobra** sua capacidade, copia todos os elementos para o novo espaço maior, e libera a memória antiga.
+
+Por que dobrar? É um equilíbrio entre espaço desperdiçado e overhead de cópia. Se você crescer apenas um elemento por vez, copiaria o array inteiro para cada inserção. Ao dobrar, você garante que o custo **médio** de inserção permanece constante - mesmo que inserções ocasionais disparem operações caras de redimensionamento.
+
+<Example title="A matemática de dobrar">
+
+Imagine inserir 1000 elementos em um array que começa com capacidade 1:
+
+- Copia 1 elemento ao crescer para capacidade 2
+- Copia 2 elementos ao crescer para capacidade 4
+- Copia 4 elementos ao crescer para capacidade 8
+- ...e assim por diante até capacidade 1024
+
+Total de cópias: 1 + 2 + 4 + 8 + ... + 512 = 1023
+
+São aproximadamente n cópias para n inserções - uma média de apenas 1 cópia por inserção! Isso é chamado de tempo **amortizado O(1)**.
+
+</Example>
+
+## Operações Comuns e Seus Custos
+
+Entender quando arrays são rápidos e quando são lentos é crucial para tomar boas decisões de design:
+
+| Operação               | Tempo    | Por quê                                           |
+| ---------------------- | -------- | ------------------------------------------------- |
+| Acesso por índice      | O(1)     | Cálculo direto do endereço de memória             |
+| Atualização por índice | O(1)     | Mesmo que acesso - apenas escreve em vez de ler   |
+| Inserir no final       | O(1)\*   | Apenas coloca o elemento (se há espaço)           |
+| Inserir no início      | O(n)     | Deve deslocar todos os elementos para direita     |
+| Inserir no meio        | O(n)     | Deve deslocar elementos após ponto de inserção    |
+| Remover do final       | O(1)     | Apenas diminui o contador de tamanho              |
+| Remover do início      | O(n)     | Deve deslocar todos os elementos para esquerda    |
+| Busca (não ordenado)   | O(n)     | Deve verificar cada elemento                      |
+| Busca (ordenado)       | O(log n) | Busca binária corta espaço pela metade cada passo |
+
+\*Para arrays dinâmicos, redimensionamento ocasional torna isso "O(1) amortizado"
+
+## Buscando em Arrays
+
+### Busca Linear: O Jeito Óbvio
+
+Quando você não sabe onde um elemento está, a abordagem direta é verificar cada posição uma por uma:
+
+```c
+int encontrar_nota(int notas[], int tamanho, int alvo) {
+    for (int i = 0; i < tamanho; i++) {
+        if (notas[i] == alvo) return i;
+    }
+    return -1;  // Não encontrado
+}
+```
+
+Isso é <Tooltip title="Tempo linear" content="O(n) - verificar n elementos leva n passos">O(n)</Tooltip>. Para um milhão de elementos, você pode precisar de um milhão de comparações.
+
+### Busca Binária: Dividir e Conquistar
+
+Se seu array está **ordenado**, você pode fazer muito melhor. Em vez de verificar cada elemento, verifique o do meio. Se seu alvo é menor, elimine toda a metade superior. Se maior, elimine a metade inferior. Repita até encontrar.
+
+Cada comparação elimina metade dos elementos restantes. Após 20 comparações, você reduziu de um milhão de elementos para apenas um. Isso é <Tooltip title="Tempo logarítmico" content="O(log n) - dobrar a entrada adiciona apenas mais um passo">O(log n)</Tooltip> - extraordinariamente eficiente.
+
+<Example title="Busca binária em ação">
+
+Buscando 42 em [10, 20, 30, 40, 50, 60, 70]:
+
+1. Verifica meio (40). Alvo 42 é maior → busca metade direita [50, 60, 70]
+2. Verifica meio (60). Alvo 42 é menor → busca metade esquerda [50]
+3. Verifica 50. Não é 42 → não encontrado
+
+Apenas 3 comparações para 7 elementos. Busca linear poderia precisar de todas as 7.
+
+</Example>
+
+O porém? Busca binária requer um array ordenado. Se você está frequentemente buscando mas raramente inserindo, pode valer a pena manter seu array ordenado. Se você está frequentemente inserindo, o custo de manter a ordem pode superar os benefícios da busca.
+
+## Arrays Multidimensionais
+
+Arrays podem ter múltiplas dimensões, criando grades, cubos, ou estruturas de dimensões ainda maiores.
+
+### Arrays 2D: Tabelas e Matrizes
+
+Um array 2D é como uma planilha - linhas e colunas. Na memória, ainda é armazenado como um único bloco contíguo, tipicamente em "row-major order" (toda a linha 0, depois toda a linha 1, etc.).
+
+```c
+int matriz[3][4] = {
+    {1, 2, 3, 4},     // Linha 0
+    {5, 6, 7, 8},     // Linha 1
+    {9, 10, 11, 12}   // Linha 2
+};
+```
+
+<MemoryVisualization
+  title="Array 2D na Memória (Row-Major):"
+  type="contiguous"
+  blocks={[
+    { address: '0x1000', value: 1, label: '[0][0]' },
+    { address: '0x1004', value: 2, label: '[0][1]' },
+    { address: '0x1008', value: 3, label: '[0][2]' },
+    { address: '0x100C', value: 4, label: '[0][3]' },
+    { address: '0x1010', value: 5, label: '[1][0]' },
+    { address: '0x1014', value: 6, label: '[1][1]' },
+  ]}
+>
+  Linhas são dispostas uma após a outra
+</MemoryVisualization>
+
+Esse layout tem implicações de performance. Iterar por uma linha (memória consecutiva) é rápido. Iterar por uma coluna (pulando pela largura da linha cada vez) é mais lento porque não é amigável ao cache.
+
+## Arrays no Mundo Real
+
+Arrays estão em todo lugar na computação:
+
+- **Imagens** são arrays 2D de pixels
+- **Áudio** é um array de amostras de amplitude ao longo do tempo
+- **Strings de texto** são arrays de caracteres
+- **Bancos de dados** usam arrays internamente para armazenamento colunar
+- **Placas gráficas** processam arrays de vértices e pixels em paralelo
+
+A simplicidade do array e padrões previsíveis de acesso à memória o tornam a escolha padrão quando você precisa armazenar uma sequência de itens similares.
+
+## Quando Arrays Não São Suficientes
+
+Apesar de sua ubiquidade, arrays nem sempre são a escolha certa:
+
+**Precisa de inserções/remoções frequentes no meio?** Considere uma linked list - ela pode inserir ou remover em O(1) se você tem uma referência para a posição.
+
+**Precisa de buscas rápidas por valor?** Uma hash table fornece buscas O(1) no caso médio, enquanto arrays não ordenados requerem O(n).
+
+**Precisa manter ordem com mudanças frequentes?** Uma árvore balanceada (como red-black tree) mantém elementos ordenados enquanto suporta inserções e remoções O(log n).
+
+**Tamanho desconhecido ou altamente variável?** Enquanto arrays dinâmicos lidam com isso, se o tamanho muda drasticamente (tipo de 10 para 10.000 de volta para 10), você pode querer uma estrutura que libera memória mais agressivamente.
+
+## Resumo
+
+Arrays são enganosamente simples. Um bloco contínuo de memória com acesso indexado parece quase básico demais para ser interessante. Porém essa simplicidade é sua força:
+
+- **Acesso instantâneo** a qualquer elemento via cálculo de índice
+- **Amigável ao cache** em padrões de acesso sequencial
+- **Overhead mínimo** - apenas os dados, sem ponteiros extras ou metadados
+- **Performance previsível** - sem surpresas, sem piores casos escondidos em operações normais
+
+O tradeoff é rigidez. Arrays querem ter um certo tamanho, e resistem a mudanças em sua estrutura. Entender esse tradeoff - acesso rápido versus modificação flexível - é o primeiro passo para escolher a estrutura de dados certa para cada problema que você enfrenta.
+
+Toda outra estrutura de dados que você aprenderá constrói sobre ou reage contra arrays. Linked lists sacrificam velocidade de acesso por flexibilidade de inserção. Hash tables usam arrays internamente mas adicionam uma camada de indireção. Árvores organizam dados hierarquicamente mas frequentemente armazenam nós em pools de memória baseados em arrays. Arrays são a fundação - domine-os, e o resto fica mais claro.

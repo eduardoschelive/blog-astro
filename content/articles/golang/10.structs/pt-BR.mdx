@@ -1,0 +1,136 @@
+---
+title: Structs
+description: Aprenda como structs no Go permitem modelar dados do mundo real agrupando campos em tipos próprios. Zero values, inicialização posicional e nomeada, e notação de ponto.
+slug: structs
+publishedAt: '2026-04-08'
+keywords:
+  [
+    golang,
+    structs go,
+    tipo struct go,
+    zero value struct,
+    inicialização nomeada go,
+    notação de ponto struct,
+    tipos compostos go,
+    tipos customizados go,
+  ]
+---
+
+## Structs
+
+Aplicações de produção trabalham com dados que frequentemente não cabem em um único tipo primitivo. Um `User` não é apenas uma string — ele tem nome, email e idade. Um `Server` não é apenas um inteiro — ele tem endereço, porta e timeout. O tipo `struct` do Go resolve isso permitindo que você defina seus próprios tipos de dados compostos, agrupando campos relacionados sob um único nome.
+
+Uma struct é definida usando as keywords `type` e `struct`:
+
+```go
+type Point struct {
+    X float64
+    Y float64
+}
+
+```
+
+Cada linha dentro das chaves declara um **campo**: um nome seguido de um tipo. Campos podem ser de qualquer tipo — primitivos, outras structs, slices, maps ou pointers. Juntos, eles descrevem a forma dos dados que seu tipo armazena.
+
+Um exemplo mais completo:
+
+```go
+type Student struct {
+    Name   string
+    Age    int
+    Grade  float64
+    Active bool
+}
+
+```
+
+Uma vez definido, `Student` é um tipo completo em Go — você pode declarar variáveis desse tipo, passá-lo para funções, armazená-lo em slices e usá-lo em qualquer lugar onde um tipo é esperado.
+
+### Zero value struct
+
+O zero value de uma struct é uma struct onde cada campo é definido com seu próprio zero value: `0` para tipos numéricos, `false` para booleanos, `""` para strings e `nil` para pointers, slices, maps e interfaces.
+
+Uma zero value struct pode ser criada com uma declaração `var`:
+
+```go
+var s Student
+
+fmt.Println(s.Name)   // ""
+fmt.Println(s.Age)    // 0
+fmt.Println(s.Grade)  // 0
+fmt.Println(s.Active) // false
+
+```
+
+Também pode ser criada com uma short declaration usando um struct literal vazio:
+
+```go
+s := Student{}
+
+```
+
+Ambas as formas produzem resultados idênticos — uma struct totalmente inicializada onde cada campo armazena o zero value de seu tipo. Não existem structs não inicializadas em Go.
+
+### Inicializando valores de campos
+
+Go oferece duas sintaxes para inicializar uma struct com valores específicos.
+
+**Inicialização implícita (posicional)** — os valores são fornecidos na exata ordem em que os campos foram declarados, sem nomes de campos:
+
+```go
+s := Student{"Alice", 20, 9.1, true}
+
+```
+
+É compacto, mas frágil — se você adicionar um campo, remover um ou reordená-los, todo callsite posicional quebra silenciosamente.
+
+**Inicialização explícita (nomeada)** — os nomes dos campos são especificados junto com os valores:
+
+```go
+s := Student{
+    Name:   "Alice",
+    Age:    20,
+    Grade:  9.1,
+    Active: true,
+}
+
+```
+
+Esse é o estilo idiomático em Go. Os campos podem aparecer em qualquer ordem, e qualquer campo omitido é automaticamente definido com seu zero value. Essa forma é resiliente a mudanças na definição da struct.
+
+<Callout type="warning" title="Prefira inicialização nomeada">
+  A inicialização posicional é frágil — qualquer mudança na ordem ou quantidade
+  de campos da struct corrompe silenciosamente todo callsite que a utiliza.
+  Prefira sempre campos nomeados, exceto para structs muito pequenas e estáveis.
+</Callout>
+
+### Notação de ponto
+
+Campos são lidos e escritos usando notação de ponto: `variavel.NomeDoCampo`.
+
+**Lendo um campo:**
+
+```go
+s := Student{Name: "Alice", Age: 20, Grade: 9.1, Active: true}
+
+fmt.Println(s.Name)   // "Alice"
+fmt.Println(s.Age)    // 20
+fmt.Println(s.Grade)  // 9.1
+fmt.Println(s.Active) // true
+
+```
+
+**Escrevendo um campo:**
+
+```go
+s := Student{Name: "Alice", Age: 20, Grade: 9.1, Active: true}
+
+s.Age = 21
+s.Grade = 9.5
+
+fmt.Println(s.Age)   // 21
+fmt.Println(s.Grade) // 9.5
+
+```
+
+A notação de ponto funciona da mesma forma independentemente de como a struct foi criada — com `var`, um struct literal, ou qualquer outra forma.

@@ -1,0 +1,312 @@
+---
+title: os e bufio
+description: Aprenda a ler e escrever arquivos, processar texto linha a linha, gerenciar variáveis de ambiente e acessar argumentos de linha de comando com os pacotes os e bufio do Go.
+slug: os-e-bufio
+publishedAt: '2026-05-04'
+keywords:
+  - golang
+  - os
+  - bufio
+  - arquivos
+  - variáveis de ambiente
+  - argumentos de linha de comando
+  - bufio.Scanner
+  - bufio.Writer
+---
+
+O pacote `os` é a principal interface do Go com o sistema operacional. Arquivos, diretórios, variáveis de ambiente, informações de processo e argumentos de linha de comando passam todos por ele. O pacote `bufio` se apoia no `os` (e no modelo mais amplo de [io.Reader / io.Writer](/pt-BR/categorias/golang/artigos/io-reader-and-writer)) adicionando buffering — transformando muitas leituras e escritas pequenas em menos chamadas de sistema, mais eficientes. Juntos, esses dois pacotes cobrem a maior parte do que os programas precisam para interagir com o ambiente em que rodam.
+
+## Abrindo e lendo arquivos
+
+A forma mais direta de ler um arquivo é `os.ReadFile`. Ele abre o arquivo, lê todo o conteúdo em um slice de bytes e fecha o arquivo — tudo em uma única chamada:
+
+```go
+data, err := os.ReadFile("config.txt")
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(string(data))
+
+```
+
+`os.ReadFile` é a escolha certa para arquivos pequenos onde você precisa do conteúdo de uma vez só. Para arquivos grandes ou situações em que você quer processar o conteúdo conforme ele chega, é necessário mais controle.
+
+`os.Open` retorna um `*os.File` que implementa `io.Reader`. Isso permite passá-lo diretamente para qualquer função que espere um reader, envolvê-lo em um buffered reader, ou processá-lo em pedaços:
+
+```go
+f, err := os.Open("data.txt")
+if err != nil {
+    log.Fatal(err)
+}
+defer f.Close()
+
+data, err := io.ReadAll(f)
+if err != nil {
+    log.Fatal(err)
+}
+
+```
+
+Sempre chame `defer f.Close()` imediatamente após verificar o erro. Arquivos abertos consomem recursos do sistema operacional (file descriptors), e há um limite por processo de quantos podem estar abertos ao mesmo tempo. Esquecer de fechar um arquivo é um vazamento de recurso que eventualmente fará o programa falhar.
+
+<Callout type="note" title="os.Open abre somente para leitura">
+  `os.Open` é um atalho para `os.OpenFile(name, os.O_RDONLY, 0)`. Tentar
+  escrever em um arquivo aberto dessa forma retorna um erro. Para acesso de
+  escrita, use `os.Create` ou `os.OpenFile` com as flags apropriadas.
+</Callout>
+
+## Escrevendo arquivos
+
+`os.WriteFile` cria ou trunca um arquivo e escreve um slice de bytes nele em uma única chamada:
+
+```go
+content := []byte("hello, world\n")
+err := os.WriteFile("output.txt", content, 0644)
+if err != nil {
+    log.Fatal(err)
+}
+
+```
+
+O terceiro argumento são os bits de permissão do arquivo. `0644` significa que o dono pode ler e escrever; todos os outros podem apenas ler. Esse é o padrão convencional para arquivos de dados.
+
+Quando você precisa de mais controle — criar um arquivo apenas se ele não existir, ou fazer append — use `os.OpenFile` com combinações explícitas de flags:
+
+```go
+f, err := os.OpenFile("log.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+if err != nil {
+    log.Fatal(err)
+}
+defer f.Close()
+
+f.WriteString("nova entrada\n")
+
+```
+
+As flags se combinam com OR bit a bit. As mais comuns são:
+
+| Flag          | Significado                               |
+| ------------- | ----------------------------------------- |
+| `os.O_RDONLY` | Abrir somente para leitura                |
+| `os.O_WRONLY` | Abrir somente para escrita                |
+| `os.O_RDWR`   | Abrir para leitura e escrita              |
+| `os.O_CREATE` | Criar o arquivo se não existir            |
+| `os.O_TRUNC`  | Truncar o arquivo ao abrir                |
+| `os.O_APPEND` | Adicionar ao final em vez de sobrescrever |
+
+## I/O com buffer usando bufio
+
+Cada chamada a `Read` ou `Write` em um `*os.File` é uma chamada de sistema. Chamadas de sistema são caras — exigem que a CPU alterne entre modo usuário e modo kernel. Quando seu código lê um byte por vez ou escreve muitas strings pequenas, esse overhead domina o tempo de execução.
+
+O pacote `bufio` resolve isso envolvendo um reader ou writer com um buffer em memória. As leituras são atendidas pelo buffer até ele esvaziar; aí ele é reabastecido com uma única chamada de sistema maior. As escritas se acumulam no buffer até ele encher ou ser explicitamente descarregado.
+
+### Lendo linha a linha com bufio.Scanner
+
+`bufio.Scanner` é a forma idiomática de iterar sobre texto estruturado. Sua função de split padrão quebra a entrada em newlines:
+
+```go
+f, err := os.Open("data.txt")
+if err != nil {
+    log.Fatal(err)
+}
+defer f.Close()
+
+scanner := bufio.NewScanner(f)
+for scanner.Scan() {
+    fmt.Println(scanner.Text())
+}
+if err := scanner.Err(); err != nil {
+    log.Fatal(err)
+}
+
+```
+
+`scanner.Scan()` avança para o próximo token. Quando não há mais nada para ler, retorna false. `scanner.Text()` retorna o token atual como string, sem o delimitador. Sempre verifique `scanner.Err()` após o loop — se `Scan` retornou false por causa de um erro (e não por EOF), `Err()` o expõe.
+
+Você pode mudar como o scanner divide a entrada chamando `scanner.Split` antes do loop. O pacote `bufio` fornece quatro funções de split integradas:
+
+| Função de split   | Divide em                     |
+| ----------------- | ----------------------------- |
+| `bufio.ScanLines` | Newlines (padrão)             |
+| `bufio.ScanWords` | Palavras separadas por espaço |
+| `bufio.ScanBytes` | Bytes individuais             |
+| `bufio.ScanRunes` | Runes codificados em UTF-8    |
+
+```go
+scanner := bufio.NewScanner(strings.NewReader("um dois três"))
+scanner.Split(bufio.ScanWords)
+for scanner.Scan() {
+    fmt.Println(scanner.Text()) // "um", "dois", "três"
+}
+
+```
+
+<Callout
+  type="warning"
+  title="O scanner padrão tem um limite de tamanho de linha"
+>
+  Por padrão, `bufio.Scanner` rejeita tokens maiores que 64 KB e retorna
+  `bufio.ErrTooLong`. Se você espera linhas muito longas — JSON minificado,
+  dados binários — chame `scanner.Buffer(buf, maxSize)` com um buffer maior
+  antes de iniciar o loop, ou use `bufio.Reader`.
+</Callout>
+
+### Controle detalhado com bufio.Reader
+
+Quando você precisa de mais do que leitura linha a linha — ler até um delimitador, fazer peek, ou desfazer a leitura de um byte — `bufio.NewReader` oferece essas capacidades:
+
+```go
+br := bufio.NewReader(f)
+
+// ReadString lê até o delimitador (delimitador incluído no resultado)
+line, err := br.ReadString('\n')
+if err != nil && err != io.EOF {
+    log.Fatal(err)
+}
+fmt.Print(line)
+
+```
+
+`ReadString` retorna tudo até a primeira ocorrência do delimitador, inclusive ele. Se a fonte terminar antes de o delimitador ser encontrado, retorna o que tiver junto com `io.EOF`.
+
+Outros métodos úteis em `bufio.Reader`:
+
+| Método                  | Descrição                                   |
+| ----------------------- | ------------------------------------------- |
+| `ReadBytes(delim byte)` | Como `ReadString`, retorna `[]byte`         |
+| `ReadRune()`            | Lê um único rune UTF-8                      |
+| `ReadByte()`            | Lê um único byte                            |
+| `Peek(n int)`           | Retorna os próximos n bytes sem consumi-los |
+| `UnreadByte()`          | Devolve o último byte lido ao buffer        |
+
+### Escrita com buffer usando bufio.Writer
+
+`bufio.NewWriter` envolve um `io.Writer` e acumula escritas em memória, reduzindo o número de chamadas de sistema:
+
+```go
+f, err := os.Create("output.txt")
+if err != nil {
+    log.Fatal(err)
+}
+defer f.Close()
+
+bw := bufio.NewWriter(f)
+fmt.Fprintln(bw, "primeira linha")
+fmt.Fprintln(bw, "segunda linha")
+if err := bw.Flush(); err != nil {
+    log.Fatal(err)
+}
+
+```
+
+O passo crítico é `Flush`. Um `bufio.Writer` mantém os dados em seu buffer interno até o buffer encher ou você explicitamente descarregá-lo. Se esquecer de chamar `Flush`, o último bloco de dados pode nunca chegar ao writer subjacente, deixando seu arquivo incompleto.
+
+<Callout type="warning" title="Sempre faça Flush em um bufio.Writer">
+  `defer f.Close()` não descarrega o `bufio.Writer`. Adicione `defer bw.Flush()`
+  logo após criar o writer para que o flush aconteça mesmo se a função retornar
+  cedo.
+</Callout>
+
+## Variáveis de ambiente
+
+Variáveis de ambiente são um mecanismo padrão para configurar programas sem hardcodar valores no binário. São especialmente comuns em ambientes containerizados e na nuvem. O pacote `os` fornece três funções para trabalhar com elas.
+
+### Lendo com os.Getenv
+
+`os.Getenv` retorna o valor de uma variável pelo nome:
+
+```go
+home := os.Getenv("HOME")
+fmt.Println(home) // ex: /home/alice
+
+port := os.Getenv("PORT")
+if port == "" {
+    port = "8080"
+}
+
+```
+
+Se a variável não estiver definida, `Getenv` retorna uma string vazia. Isso cria uma ambiguidade: um resultado vazio pode significar que a variável está ausente ou que foi explicitamente definida como string vazia.
+
+### Distinguindo "não definida" de "vazia" com os.LookupEnv
+
+`os.LookupEnv` resolve essa ambiguidade retornando um segundo valor booleano:
+
+```go
+val, ok := os.LookupEnv("APP_ENV")
+if !ok {
+    val = "development"
+    fmt.Println("APP_ENV não definida, usando development como padrão")
+}
+fmt.Println("ambiente:", val)
+
+```
+
+`ok` é true somente quando a variável existe no ambiente, independentemente do seu valor. Use `LookupEnv` sempre que precisar distinguir "não configurada" de "explicitamente vazia".
+
+### Definindo e removendo variáveis
+
+`os.Setenv` define uma variável para o processo atual:
+
+```go
+os.Setenv("LOG_LEVEL", "debug")
+fmt.Println(os.Getenv("LOG_LEVEL")) // debug
+
+```
+
+A mudança é visível para chamadas subsequentes a `Getenv` no mesmo processo e para qualquer processo filho iniciado depois da chamada. Não afeta o processo pai nem persiste após o término do programa.
+
+`os.Unsetenv` remove uma variável:
+
+```go
+os.Unsetenv("LOG_LEVEL")
+
+```
+
+Para ler todas as variáveis de uma vez, `os.Environ` retorna um snapshot do ambiente como um slice `[]string`, onde cada elemento tem o formato `"CHAVE=VALOR"`.
+
+## Argumentos de linha de comando
+
+Todo programa Go pode acessar seus argumentos de linha de comando brutos por meio de `os.Args`:
+
+```go
+package main
+
+import (
+    "fmt"
+    "os"
+)
+
+func main() {
+    fmt.Println("programa:", os.Args[0])
+    fmt.Println("argumentos:", os.Args[1:])
+}
+
+```
+
+`os.Args` é um `[]string`. `os.Args[0]` é sempre o caminho para o executável. Os argumentos que o usuário digitou começam no índice 1. Executar `./myapp --port 8080 --debug` produziria:
+
+```
+programa: ./myapp
+argumentos: [--port 8080 --debug]
+```
+
+Antes de indexar `os.Args`, sempre verifique seu comprimento para evitar um panic:
+
+```go
+if len(os.Args) < 2 {
+    fmt.Fprintln(os.Stderr, "uso: myapp <arquivo>")
+    os.Exit(1)
+}
+filename := os.Args[1]
+
+```
+
+`os.Exit(1)` termina o processo imediatamente com um código de saída diferente de zero, sinalizando falha para o shell ou processo chamador. Note que `os.Exit` não executa funções com defer, por isso deve ser usado apenas no nível mais externo de `main`.
+
+<Callout type="note" title="Para flags estruturadas, prefira o pacote flag">
+  `os.Args` é o material bruto. Para programas com flags nomeadas (`--port`,
+  `--verbose`, `--output`), o pacote `flag` da biblioteca padrão faz o parse de
+  `os.Args` automaticamente, valida os tipos e gera instruções de uso. Use-o
+  sempre que sua CLI crescer além de alguns argumentos posicionais.
+</Callout>

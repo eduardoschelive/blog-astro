@@ -1,0 +1,186 @@
+---
+title: Maps
+description: Learn how Go's built-in map type works — nil vs empty maps, reading with the comma-ok idiom, writing, key uniqueness, and comparable type constraints.
+slug: maps
+publishedAt: '2026-04-08'
+keywords:
+  [
+    golang,
+    go maps,
+    go map type,
+    nil map go,
+    make map go,
+    comma-ok idiom go,
+    go map key types,
+    go hash map,
+    go map vs nil,
+  ]
+---
+
+## Maps
+
+A map is a built-in data structure that stores an unordered collection of **key-value pairs**. Each key must be unique within a map, and it maps to exactly one value. This structure makes it efficient to look up, add, or delete values by their key.
+
+Under the hood, Go's maps are implemented as [hash maps](/categories/data-structures/articles/hash-table) — a data structure that uses a hash function to map keys to storage slots, enabling average O(1) lookups regardless of the number of entries.
+
+The general syntax for a map type is `map[KeyType]ValueType`. For example, a map from `string` keys to `int` values:
+
+```go
+var scores map[string]int
+
+```
+
+The `len` built-in returns the number of key-value pairs currently in a map:
+
+```go
+m := map[string]int{"alice": 10, "bob": 20}
+
+fmt.Println(len(m)) // 2
+
+```
+
+---
+
+## Nil map
+
+The zero value of a map is `nil`. A nil map behaves like an empty map when reading, but panics on any write operation.
+
+```go
+var m map[string]int // nil map
+
+fmt.Println(m == nil)   // true
+fmt.Println(len(m))     // 0
+fmt.Println(m["alice"]) // 0 — returns zero value, no panic
+
+```
+
+Reading from a nil map is safe and always returns the zero value for the value type. However, writing to a nil map causes a **runtime panic**:
+
+```go
+var m map[string]int
+m["alice"] = 10 // panic: assignment to entry in nil map
+
+```
+
+This is one of the most common map-related bugs in Go. Always initialize a map before writing to it.
+
+---
+
+## Empty map
+
+An empty map is initialized and ready to use — unlike a nil map, you can read from and write to it freely. The `len` of an empty map is also 0, just like a nil map, but it is not `nil`.
+
+Go provides a few ways to create an empty map.
+
+**Map literal:**
+
+```go
+m := map[string]int{}
+
+fmt.Println(m == nil) // false
+fmt.Println(len(m))   // 0
+
+```
+
+**Using make:**
+
+```go
+m := make(map[string]int)
+
+```
+
+**Using make with a capacity hint:**
+
+```go
+m := make(map[string]int, 100)
+
+```
+
+The capacity hint is optional. It tells Go to pre-allocate enough internal space for roughly that many entries, which can avoid repeated internal reallocations as the map grows. It does **not** cap the map's size — the map still grows automatically beyond that hint.
+
+---
+
+## Reading from a map
+
+Values are read by providing the key in bracket notation:
+
+```go
+m := map[string]int{"alice": 10, "bob": 20}
+
+fmt.Println(m["alice"]) // 10
+fmt.Println(m["carol"]) // 0 — key does not exist, returns zero value
+
+```
+
+When a key does not exist, Go silently returns the zero value for the value type. This means you cannot tell by the value alone whether a key is present or simply holds the zero value.
+
+### The comma-ok idiom
+
+To distinguish between a missing key and a key that genuinely holds the zero value, use the **comma-ok idiom**:
+
+```go
+value, ok := m["alice"]
+
+if ok {
+    fmt.Println("found:", value)
+} else {
+    fmt.Println("key not found")
+}
+
+```
+
+The second return value `ok` is a boolean: `true` if the key exists in the map, `false` otherwise. This pattern is idiomatic Go and appears frequently whenever working with maps.
+
+---
+
+## Writing to a map
+
+Values are written using the same bracket notation:
+
+```go
+m := make(map[string]int)
+
+m["alice"] = 10
+m["bob"] = 20
+
+fmt.Println(m) // map[alice:10 bob:20]
+
+```
+
+### Unique keys
+
+Maps can only hold **unique keys**. Assigning a value to an existing key overwrites the previous value — there is no error or warning:
+
+```go
+m := map[string]int{"alice": 10}
+
+m["alice"] = 99
+
+fmt.Println(m["alice"]) // 99
+
+```
+
+### Comparable key types
+
+Not all types can be used as map keys. Go requires that key types be **comparable** — meaning two values of that type can be tested for equality with `==` and `!=`.
+
+Valid key types include:
+
+- Booleans, integers, floats, and complex numbers
+- Strings
+- Pointers
+- Arrays (not slices) of comparable element types
+- Structs where all fields are comparable
+
+The following types **cannot** be used as map keys:
+
+- Slices
+- Maps
+- Functions
+
+Attempting to use a non-comparable type as a key is a compile error:
+
+```go
+m := map[[]int]string{} // compile error: invalid map key type []int
+
+```

@@ -1,0 +1,248 @@
+---
+title: The select statement
+description: Learn how Go's select statement coordinates multiple channel operations simultaneously, handles timeouts, and powers the for-select pattern for reactive goroutines.
+slug: select
+publishedAt: '2026-05-06'
+keywords:
+  - golang
+  - select
+  - channels
+  - concurrency
+  - goroutines
+  - for-select
+  - timeout
+---
+
+When you have a single channel, a simple send or receive is enough. But real concurrent programs rarely deal with just one channel — a goroutine might be waiting for data from multiple sources, or it might need to give up if nothing arrives within a deadline. Go's `select` statement exists precisely for this: it lets a goroutine wait on multiple channel operations at once and react to whichever one becomes ready first.
+
+## The select statement
+
+At a glance, `select` looks like `switch`. Both use `case` clauses, both execute the matching branch, and both compile down to a decision tree. The syntax really is similar:
+
+```go
+select {
+case msg := <-ch1:
+    fmt.Println("received from ch1:", msg)
+case ch2 <- 42:
+    fmt.Println("sent to ch2")
+}
+
+```
+
+Each `case` must be a channel operation — either a send (`ch <- value`) or a receive (`value := <-ch`, `<-ch`). Unlike `switch`, you cannot put arbitrary boolean expressions in `select` cases.
+
+## Switch vs select
+
+The resemblance to `switch` is mostly cosmetic. The two constructs behave very differently:
+
+|             | `switch`                          | `select`                         |
+| ----------- | --------------------------------- | -------------------------------- |
+| Cases are   | Evaluated top-to-bottom           | Evaluated simultaneously         |
+| Branches on | First true condition              | First ready channel              |
+| Blocks      | Never (unless channel op in case) | Until at least one case is ready |
+| Default     | Optional short-circuit            | Optional non-blocking escape     |
+
+The critical difference is _simultaneous evaluation_. In a `switch`, Go checks each case in order and stops at the first match. In a `select`, Go checks **all** cases at the same time and picks among the ones that are ready.
+
+```go
+ch1 := make(chan string, 1)
+ch2 := make(chan string, 1)
+
+ch1 <- "one"
+ch2 <- "two"
+
+select {
+case msg := <-ch1:
+    fmt.Println(msg)
+case msg := <-ch2:
+    fmt.Println(msg)
+}
+
+```
+
+Both channels already have a value, so both cases are ready immediately. A `switch` would always pick `ch1` because it's listed first. A `select` makes no such guarantee.
+
+## Simultaneous evaluation and pseudo-random selection
+
+When multiple cases are ready at the same time, Go picks one using **pseudo-random uniform selection** — every ready case has an equal probability of being chosen. This is a deliberate design decision, not an implementation detail. If `select` always favored the first ready case, programs that relied on it would work correctly in tests but starve lower-priority channels under load. Randomness prevents systematic bias.
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+    ch1 := make(chan string, 1)
+    ch2 := make(chan string, 1)
+
+    ch1 <- "from ch1"
+    ch2 <- "from ch2"
+
+    for i := 0; i < 5; i++ {
+        select {
+        case msg := <-ch1:
+            fmt.Println(msg)
+            ch1 <- "from ch1"
+        case msg := <-ch2:
+            fmt.Println(msg)
+            ch2 <- "from ch2"
+        }
+    }
+}
+
+```
+
+Running this a few times will produce different orderings. Neither channel dominates.
+
+<Callout type="note" title="No fairness guarantee">
+  Pseudo-random means statistically uniform over many iterations, not strictly
+  alternating. In a tight loop it is possible (though unlikely) to receive from
+  the same case several times in a row. If strict round-robin is required, you
+  need to implement that logic explicitly.
+</Callout>
+
+## The default case
+
+If no channel is ready and the `select` has a `default` clause, Go executes it immediately instead of blocking. This turns `select` into a **non-blocking** operation:
+
+```go
+select {
+case msg := <-ch:
+    fmt.Println("received:", msg)
+default:
+    fmt.Println("no message available")
+}
+
+```
+
+This is useful for polling — checking whether data is available without committing to wait for it. Be careful, though: a `select` with a `default` inside a tight loop becomes a busy-wait that burns CPU. Use it only when you genuinely want to proceed without data, not as a substitute for proper synchronization.
+
+<Callout type="warning" title="Busy-waiting with default">
+  Combining `default` with a `for` loop that runs as fast as possible is rarely
+  correct. If you need to check periodically, pair `default` with a
+  `time.Sleep`, or better yet, use `time.After` or `time.Ticker` as a proper
+  timing source.
+</Callout>
+
+## Timeouts with time.After
+
+Blocking forever is usually wrong. A goroutine waiting on a channel that never sends will leak. `time.After` returns a channel that receives a value after the specified duration, making it a natural fit for `select` timeouts:
+
+```go
+import "time"
+
+select {
+case msg := <-ch:
+    fmt.Println("received:", msg)
+case <-time.After(2 * time.Second):
+    fmt.Println("timed out")
+}
+
+```
+
+If `ch` delivers a message within two seconds, the first case runs. If two seconds pass with nothing, `time.After`'s channel fires and the second case runs. The goroutine never blocks indefinitely.
+
+<Callout type="note" title="time.After and memory">
+  `time.After` allocates a timer that is not garbage-collected until it fires.
+  In a loop that timeouts frequently, this can accumulate. For recurring
+  timeouts inside a long-lived loop, prefer `time.NewTimer` and reset it
+  manually, or use a `context.Context` with a deadline.
+</Callout>
+
+## The for-select pattern
+
+A single `select` decides once and exits. Most goroutines need to keep reacting — reading from a stream, processing work items, or watching for a shutdown signal. The idiomatic way to do this is **for-select**: an ordinary `for` loop whose body is a `select`.
+
+```go
+func worker(jobs <-chan int, done <-chan struct{}) {
+    for {
+        select {
+        case j, ok := <-jobs:
+            if !ok {
+                fmt.Println("jobs channel closed")
+                return
+            }
+            fmt.Println("processing job", j)
+        case <-done:
+            fmt.Println("shutting down")
+            return
+        }
+    }
+}
+
+```
+
+The goroutine spins in the loop, blocking at `select` each iteration until either a job arrives or the `done` channel signals shutdown. This pattern appears throughout the Go standard library and is the foundation of most long-lived concurrent goroutines.
+
+A few things to notice in the example:
+
+- The `ok` idiom (`j, ok := <-jobs`) detects a closed channel. When a channel is closed and drained, `ok` is `false`. Checking it prevents the goroutine from looping forever on zero values.
+- The `done` channel uses `struct{}` — an empty struct has zero size and is the conventional type for signal-only channels that carry no data.
+- Both `return` statements are explicit. A `break` inside a `select` only breaks out of the `select`, not the enclosing `for`. To exit the loop from within a `select`, use `return`, or `break` with a labeled outer loop.
+
+<Callout type="warning" title="break inside select">
+`break` inside a `select` case exits the `select`, not the surrounding `for` loop. This surprises many developers. Use `return` to exit the function, or label the `for` loop and use `break label` to exit it.
+
+```go
+outer:
+    for {
+        select {
+        case <-done:
+            break outer
+        }
+    }
+
+```
+
+</Callout>
+
+## Putting it together
+
+Here is a small self-contained example that combines for-select, a timeout, and a done signal to show how the pieces interact:
+
+```go
+package main
+
+import (
+    "fmt"
+    "time"
+)
+
+func generate(done <-chan struct{}) <-chan int {
+    out := make(chan int)
+    go func() {
+        defer close(out)
+        for i := 0; ; i++ {
+            select {
+            case out <- i:
+            case <-done:
+                return
+            }
+        }
+    }()
+    return out
+}
+
+func main() {
+    done := make(chan struct{})
+    nums := generate(done)
+
+    timeout := time.After(100 * time.Millisecond)
+
+    for {
+        select {
+        case n := <-nums:
+            fmt.Println(n)
+        case <-timeout:
+            fmt.Println("timeout reached, stopping")
+            close(done)
+            return
+        }
+    }
+}
+
+```
+
+`generate` sends incrementing integers until `done` is closed. `main` reads them in a for-select loop, and after 100 milliseconds the `timeout` case fires, closes `done`, and exits. The generator goroutine detects the closed `done` channel in its own for-select and exits cleanly.
+
+The `select` statement — especially inside a `for` loop — is the primary tool for building responsive, cancellable goroutines. Every goroutine you launch should have a way to exit; the `done` channel pattern shown here is one of the most common ways to provide that exit path. Without it, goroutines that block indefinitely become leaks — a silent, growing drain on memory that is easy to introduce and surprisingly hard to notice. That problem, and how to solve it systematically, is the subject of the next article.

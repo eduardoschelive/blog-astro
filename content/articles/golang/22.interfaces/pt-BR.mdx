@@ -1,0 +1,353 @@
+---
+title: Interfaces
+description: Aprenda como interfaces em Go definem comportamento de forma implícita, como types satisfazem múltiplas interfaces, e como a empty interface e type assertions permitem código flexível e fácil de manter.
+slug: interfaces
+publishedAt: '2026-04-24'
+updatedAt: '2026-04-27'
+keywords:
+  - golang
+  - interfaces
+  - implicit interfaces
+  - empty interface
+  - any
+  - type assertion
+  - type switch
+  - interface embedding
+---
+
+A maioria das linguagens orientadas a objetos exige que você declare explicitamente que um type implementa uma interface — você escreve `implements AlgumaInterface` e o compilador vincula os dois pelo nome. Go adota uma abordagem diferente. Em Go, um type satisfaz uma interface automaticamente, apenas por ter os métodos certos. Não existe declaração, anotação ou acoplamento entre o type e a definição da interface. Essa ideia simples tem consequências profundas na forma como o código Go é estruturado e na facilidade de mantê-lo.
+
+## O que é uma interface
+
+Uma interface é um abstract type que descreve comportamento. Ela lista um conjunto de assinaturas de métodos — nomes, tipos de parâmetros e tipos de retorno — sem fornecer nenhuma implementação.
+
+As duas interfaces mais canônicas da standard library do Go vêm do package `io`:
+
+```go
+// do package io
+type Reader interface {
+    Read(p []byte) (n int, err error)
+}
+
+type Writer interface {
+    Write(p []byte) (n int, err error)
+}
+
+```
+
+Qualquer type com um método `Read` correspondente a essa assinatura satisfaz `io.Reader`. Qualquer type com o `Write` equivalente satisfaz `io.Writer`. Arquivos, conexões de rede, bodies de requests HTTP, compressores gzip e buffers em memória implementam um ou ambos — não porque declararam isso, mas porque têm os métodos certos.
+
+Um exemplo mais simples é `fmt.Stringer`, que qualquer type pode satisfazer implementando um único método:
+
+```go
+// do package fmt
+type Stringer interface {
+    String() string
+}
+
+```
+
+Uma interface diz: "qualquer type que tenha esses métodos se qualifica." Ela não faz nenhuma afirmação sobre como esses métodos são implementados, quais outros métodos o type pode ter ou como ele armazena seus dados.
+
+## Satisfação implícita
+
+Em Go, um type satisfaz uma interface simplesmente implementando todos os seus métodos. Não existe keyword `implements`. Nenhum registro. Nenhuma declaração vinculando o type à interface:
+
+```go
+type Temperature struct {
+    Celsius float64
+}
+
+func (t Temperature) String() string {
+    return fmt.Sprintf("%.1f°C", t.Celsius)
+}
+
+```
+
+`Temperature` satisfaz `Stringer` porque tem um método `String() string`. O compilador Go verifica isso automaticamente onde quer que um `Stringer` seja esperado. Você não precisa dizer ao Go que `Temperature` é um `Stringer` — ele simplesmente é.
+
+Isso é chamado de **structural typing** ou **duck typing**: se tem a forma certa, serve.
+
+<Callout
+  type="note"
+  title="A satisfação de interface é verificada no ponto de uso"
+>
+  Go não verifica se um type satisfaz uma interface quando o type é definido. A
+  verificação acontece quando você atribui o valor a uma variável de interface
+  ou o passa para uma função que espera uma interface. Se quiser uma garantia em
+  tempo de compilação antecipada, você pode usar o blank identifier: `var _
+  Stringer = Temperature{}`.
+</Callout>
+
+## Um type pode satisfazer múltiplas interfaces
+
+Nada impede um type de satisfazer muitas interfaces ao mesmo tempo. Desde que ele tenha todos os métodos que cada interface exige, ele se qualifica para todas elas:
+
+```go
+type File struct {
+    name string
+    // ...
+}
+
+func (f *File) Read(p []byte) (n int, err error)  { /* ... */ return }
+func (f *File) Write(p []byte) (n int, err error) { /* ... */ return }
+func (f *File) Close() error                      { /* ... */ return }
+func (f *File) String() string                    { return f.name }
+
+```
+
+`*File` satisfaz `io.Reader` (tem `Read`), `io.Writer` (tem `Write`), `io.Closer` (tem `Close`) e `Stringer` (tem `String`) — tudo ao mesmo tempo, sem nenhuma declaração. Você pode passar um `*File` para qualquer função que espere qualquer uma dessas interfaces.
+
+## Interfaces tornam o código fácil de manter
+
+O verdadeiro poder das interfaces não é sintático — é arquitetural. Quando uma função aceita uma interface em vez de um concrete type, ela se torna indiferente a como aquela interface é implementada. É aqui que a abordagem de Go se torna mais valiosa.
+
+Considere uma camada de dados que precisa consultar registros:
+
+```go
+type Database interface {
+    Query(query string, args ...any) ([]Row, error)
+    Insert(record Record) error
+    Delete(id int) error
+}
+
+```
+
+Uma função que aceita `Database` funcionará corretamente independentemente de a implementação subjacente usar PostgreSQL, MySQL, SQLite ou um store em memória para testes:
+
+```go
+func GetUser(db Database, id int) (User, error) {
+    rows, err := db.Query("SELECT * FROM users WHERE id = ?", id)
+    if err != nil {
+        return User{}, err
+    }
+    // ...
+}
+
+```
+
+Cada implementação fornece o mesmo conjunto de operações:
+
+```go
+type PostgresDB struct{ conn *sql.DB }
+
+func (p *PostgresDB) Query(query string, args ...any) ([]Row, error) { /* lógica postgres */ return nil, nil }
+func (p *PostgresDB) Insert(record Record) error                     { /* lógica postgres */ return nil }
+func (p *PostgresDB) Delete(id int) error                            { /* lógica postgres */ return nil }
+
+type InMemoryDB struct{ records map[int]Record }
+
+func (m *InMemoryDB) Query(query string, args ...any) ([]Row, error) { /* lógica em memória */ return nil, nil }
+func (m *InMemoryDB) Insert(record Record) error                     { /* lógica em memória */ return nil }
+func (m *InMemoryDB) Delete(id int) error                            { /* lógica em memória */ return nil }
+
+```
+
+`GetUser` não muda quando você troca as implementações. Nenhuma outra função escrita contra `Database` muda também. Você pode introduzir um novo banco de dados ou substituir o banco real por uma versão em memória nos testes sem tocar no código que o utiliza.
+
+## Embedding de interfaces
+
+Assim como structs podem fazer embedding de outras structs, interfaces podem fazer embedding de outras interfaces. O resultado é uma interface cujo method set é a união de todas as interfaces embutidas:
+
+```go
+type Reader interface {
+    Read(p []byte) (n int, err error)
+}
+
+type Writer interface {
+    Write(p []byte) (n int, err error)
+}
+
+type ReadWriter interface {
+    Reader
+    Writer
+}
+
+```
+
+`ReadWriter` exige tanto `Read` quanto `Write`. Qualquer type que implemente ambos satisfaz `ReadWriter`. A standard library usa esse padrão extensivamente — `io.ReadWriter`, `io.ReadWriteCloser` e `io.ReadWriteSeeker` são todos compostos de primitivas de interface menores.
+
+Embedding permite que você construa contratos de interface precisos a partir de peças reutilizáveis. Uma função que apenas lê pode exigir `Reader`; uma função que lê e escreve pode exigir `ReadWriter`. Você nunca paga por métodos que não usa.
+
+## A empty interface
+
+Uma interface sem métodos é satisfeita por todos os types em Go. Ela não tem requisitos, então nada pode deixar de atendê-los:
+
+```go
+var x interface{}
+x = 42
+x = "hello"
+x = true
+x = []int{1, 2, 3}
+
+```
+
+Como esse padrão é tão comum, Go 1.18 introduziu `any` como um alias pré-declarado para `interface{}`. Eles são idênticos — você pode usar qualquer um, mas `any` é a convenção moderna:
+
+```go
+var x any
+x = 42
+x = "hello"
+
+```
+
+A empty interface é útil quando você genuinamente precisa aceitar ou armazenar valores de types desconhecidos ou variados: um container genérico, um deserializador de JSON, um logger que aceita valores arbitrários. É também o type dos elementos retornados pela reflection.
+
+<Callout type="warning" title="any perde informação de type">
+  Quando você armazena um valor em um `any`, o type estático some da perspectiva
+  do compilador. Você não pode chamar métodos nele, indexá-lo ou fazer
+  aritmética — não sem antes recuperar o type original. Use `any` apenas quando
+  o type genuinamente varia em tempo de execução. Se você conhece o type em
+  tempo de compilação, use-o diretamente.
+</Callout>
+
+## Nil interfaces
+
+Um valor de interface não é uma coisa só — é um par: um ponteiro para informações de type e um ponteiro para o valor concreto. Go representa isso internamente como:
+
+```go
+type iface struct {
+    tab  *itab          // informações do type
+    data unsafe.Pointer // o valor
+}
+
+```
+
+Uma interface é nil somente quando ambos os ponteiros são nil. Uma variável de interface recém-declarada não tem type nem valor, então é nil:
+
+```go
+var err error
+fmt.Println(err == nil) // true
+
+```
+
+A armadilha aparece quando você atribui um ponteiro nil concreto a uma interface:
+
+```go
+var p *MyError = nil
+var err error = p
+fmt.Println(err == nil) // false
+
+```
+
+Mesmo que `p` seja nil, atribuí-lo a `err` preenche o campo `tab` com informações do type `*MyError`. A interface agora conhece seu concrete type — então não é nil, mesmo que o ponteiro subjacente seja.
+
+Go funciona assim porque o runtime precisa do type para despachar chamadas de método. Sem `tab`, não seria possível saber qual método `Error()` chamar.
+
+O lugar mais comum onde isso pega os desenvolvedores é em funções que retornam error. Retornar um ponteiro nil de um concrete error type não é o mesmo que retornar `nil`:
+
+```go
+// retorna uma interface não-nil segurando um ponteiro nil
+func validate() error {
+    var e *ValidationError = nil
+    return e
+}
+
+```
+
+A forma segura é retornar um nil sem type diretamente:
+
+```go
+func validate() error {
+    return nil
+}
+
+```
+
+Se você precisar retornar um error tipado condicionalmente, verifique o valor concreto antes:
+
+```go
+func validate() error {
+    var e *ValidationError = nil
+    if e == nil {
+        return nil
+    }
+    return e
+}
+
+```
+
+Quando uma comparação de interface com `nil` dá um resultado inesperado, imprima o type dinâmico e o valor separadamente:
+
+```go
+fmt.Printf("%T %v\n", err, err)
+// *main.MyError <nil>  ← a interface não é nil, mas seu valor é
+
+```
+
+## Type assertion
+
+Quando você tem um valor armazenado em uma interface e precisa recuperar o concrete type subjacente, você usa uma **type assertion**. Uma type assertion não converte o valor — ela revela o concrete type que foi armazenado na interface:
+
+```go
+var x any = "hello"
+
+s := x.(string) // afirma que x contém uma string
+fmt.Println(s)  // hello
+
+```
+
+Se a assertion estiver errada — a interface contém um type diferente — Go entra em panic em tempo de execução:
+
+```go
+var x any = 42
+s := x.(string) // panic: interface conversion: interface {} is int, not string
+
+```
+
+Para evitar panic, use a forma com dois valores de retorno. O segundo valor é um boolean que indica se a assertion foi bem-sucedida:
+
+```go
+var x any = 42
+
+s, ok := x.(string)
+if ok {
+    fmt.Println("string:", s)
+} else {
+    fmt.Println("not a string") // este branch executa
+}
+
+```
+
+<Callout type="warning" title="Type assertion não é type conversion">
+  `x.(string)` e `string(x)` são operações completamente diferentes. Uma type
+  assertion revela o que já está dentro da interface — ela não muda nem converte
+  o valor. Uma type conversion transforma um valor de um type para outro
+  (sujeito às regras de conversão de Go). Confundir as duas é um erro comum
+  entre iniciantes.
+</Callout>
+
+## Type switch
+
+Quando você precisa lidar com vários possible concrete types armazenados em uma interface, um **type switch** é mais limpo do que uma cadeia de type assertions. Um type switch se parece com um `switch` regular, mas as expressões dos cases são types em vez de valores:
+
+```go
+func describe(x any) string {
+    switch v := x.(type) {
+    case int:
+        return fmt.Sprintf("int: %d", v)
+    case string:
+        return fmt.Sprintf("string: %q", v)
+    case bool:
+        return fmt.Sprintf("bool: %v", v)
+    case []int:
+        return fmt.Sprintf("[]int com %d elementos", len(v))
+    default:
+        return fmt.Sprintf("type desconhecido: %T", v)
+    }
+}
+
+```
+
+A sintaxe `x.(type)` é válida apenas dentro de um `switch` — você não pode usá-la em outro lugar. Dentro de cada `case`, a variável `v` é automaticamente tipada como o type correspondente. No case `int`, `v` é um `int`; no case `string`, `v` é uma `string`. No case `default`, `v` permanece `any`.
+
+```go
+fmt.Println(describe(42))           // int: 42
+fmt.Println(describe("hello"))      // string: "hello"
+fmt.Println(describe(true))         // bool: true
+fmt.Println(describe([]int{1,2,3})) // []int com 3 elementos
+fmt.Println(describe(3.14))         // type desconhecido: float64
+
+```
+
+Um type switch é a forma idiomática em Go de ramificar com base em informações de type em tempo de execução. Você o verá com frequência em funções que processam valores de fontes externas — decodificadores de JSON, frameworks de RPC, loggers — onde o concrete type não é conhecido até o tempo de execução.

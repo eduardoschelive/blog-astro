@@ -1,0 +1,238 @@
+---
+title: Preventing goroutine leaks
+description: Learn how goroutines leak, why the GC cannot help, and how the done channel and context patterns give every goroutine a guaranteed exit path.
+slug: goroutine-leaks
+publishedAt: '2026-05-06'
+keywords:
+  - golang
+  - goroutines
+  - goroutine leak
+  - context
+  - cancellation
+  - concurrency
+---
+
+Goroutines are cheap — a few kilobytes of stack and a handful of microseconds to start. That cheapness is by design: it lets you launch thousands of them without worrying about overhead. But cheapness has a shadow side. Because goroutines are so easy to create, it is equally easy to create them without thinking about how — or whether — they will ever stop.
+
+The Go garbage collector can reclaim memory that is no longer reachable. A blocked goroutine's stack and all the variables it closes over are still reachable — from the goroutine itself. The GC will not collect them. A goroutine that is parked forever is a permanent resident of your process: it consumes memory, holds whatever resources it captured, and prevents those resources from being freed.
+
+This is a **goroutine leak**: a goroutine that has no path to termination.
+
+## How goroutines terminate
+
+The creator of a goroutine is responsible for its lifetime. The runtime will not reclaim it, and no other party will stop it on your behalf. With that in mind, there are exactly three legitimate ways a goroutine can stop:
+
+**The assigned work is complete.** The goroutine finishes its task and its function returns. This is the simplest and most natural exit.
+
+```go
+go func() {
+    result := compute()
+    results <- result
+    // function returns — goroutine exits cleanly
+}()
+
+```
+
+**An error is encountered.** The goroutine hits a condition it cannot recover from, reports the error through a channel or other mechanism, and returns.
+
+```go
+go func() {
+    data, err := fetchData()
+    if err != nil {
+        errCh <- err
+        return // goroutine exits on error
+    }
+    results <- process(data)
+}()
+
+```
+
+**The parent signals termination.** The goroutine is long-lived — it loops indefinitely, waiting for work — and the caller must explicitly tell it to stop. Without this signal, the goroutine has no way to know it is no longer needed.
+
+Without at least one of these paths, a goroutine will never exit.
+
+## What a leak looks like
+
+The most common leak pattern is a goroutine blocked on a channel receive with no sender:
+
+```go
+func doWork() {
+    ch := make(chan int)
+    go func() {
+        val := <-ch         // blocks forever — nobody sends
+        fmt.Println(val)
+    }()
+    // doWork returns; ch is no longer referenced from the outside,
+    // but the goroutine still holds a reference to ch and is parked on it
+}
+
+```
+
+`doWork` creates an unbuffered channel, launches a goroutine that reads from it, and returns without ever sending. The caller drops the channel, but the goroutine still holds a reference to it internally. The GC sees the channel as reachable and leaves it alone. The goroutine sits parked on `<-ch` indefinitely.
+
+The same issue appears on the send side:
+
+```go
+func producer() <-chan int {
+    ch := make(chan int)
+    go func() {
+        for i := 0; ; i++ {
+            ch <- i // blocks if nobody is reading
+        }
+    }()
+    return ch
+}
+
+func main() {
+    ch := producer()
+    fmt.Println(<-ch) // reads the first value, then discards ch
+    // the producer goroutine is now blocked on ch <- 1 forever
+}
+
+```
+
+`main` reads one value and discards the channel. The producer goroutine tries to send the next value, finds no receiver, and parks. There is no mechanism to stop it. The goroutine is leaked.
+
+<Callout type="warning" title="Leaks compound under load">
+  A single leaked goroutine may cost only a few kilobytes. But a server that
+  handles thousands of requests per minute, each leaking one goroutine, will
+  accumulate tens of thousands of parked goroutines. Memory grows steadily.
+  Resources are held longer than expected. What looks like a small oversight
+  becomes a reliability problem.
+</Callout>
+
+## Preventing leaks: the done channel
+
+The canonical solution for the third termination path — parent-signalled termination — is the `done` channel. The caller creates a channel and passes it to the goroutine. When the goroutine should stop, the caller closes the channel. The goroutine watches for this in a `select` loop:
+
+```go
+func producer(done <-chan struct{}) <-chan int {
+    ch := make(chan int)
+    go func() {
+        defer close(ch)
+        for i := 0; ; i++ {
+            select {
+            case ch <- i:
+            case <-done:
+                return
+            }
+        }
+    }()
+    return ch
+}
+
+func main() {
+    done := make(chan struct{})
+    ch := producer(done)
+
+    fmt.Println(<-ch) // read one value
+    close(done)       // signal the producer to stop
+    // producer goroutine will return on its next select iteration
+}
+
+```
+
+Closing `done` makes the `<-done` case in the `select` immediately ready. On the goroutine's next loop iteration, it picks that case and returns. `defer close(ch)` fires on the way out, signalling any downstream consumers that the channel is exhausted.
+
+The `done` channel is typed as `<-chan struct{}` (receive-only, zero-size) in the goroutine's parameter. This is deliberate: the goroutine cannot close it accidentally, and the channel carries no data — its only role is as a signal.
+
+<Callout type="note" title="Close from the caller, not the goroutine">
+  Only the caller should close `done`. It is always the caller that knows when a
+  goroutine is no longer needed. If the goroutine closed its own `done` channel,
+  it would be deciding its own fate — defeating the purpose of the pattern.
+</Callout>
+
+## Preventing leaks: context.Context
+
+The `done` channel is a manual, point-to-point mechanism. Go's standard library provides a higher-level abstraction for the same problem: `context.Context`.
+
+A `Context` carries a cancellation signal, an optional deadline, and optional key-value pairs. Critically, cancellation propagates through the context tree: when a parent context is cancelled, all contexts derived from it are cancelled too. This makes `context` the right tool when cancellation needs to flow across multiple goroutines or function boundaries.
+
+```go
+func worker(ctx context.Context, jobs <-chan int) {
+    for {
+        select {
+        case j, ok := <-jobs:
+            if !ok {
+                return
+            }
+            fmt.Println("processing", j)
+        case <-ctx.Done():
+            fmt.Println("cancelled:", ctx.Err())
+            return
+        }
+    }
+}
+
+func main() {
+    ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+    defer cancel()
+
+    jobs := make(chan int, 5)
+    go worker(ctx, jobs)
+
+    for i := 0; i < 5; i++ {
+        jobs <- i
+    }
+}
+
+```
+
+`context.WithTimeout` returns a context that cancels itself after two seconds. When it cancels, `ctx.Done()` is closed — exactly like the manual `done` channel, but now the runtime handles the timer. `ctx.Err()` tells the goroutine why it was cancelled: `context.DeadlineExceeded` for timeouts, `context.Canceled` for explicit cancellation.
+
+`defer cancel()` appears immediately after `WithTimeout`. This is not optional: even if the timeout fires naturally, calling `cancel` releases the internal timer and associated resources. Skipping it leaks the timer.
+
+<Callout type="warning" title="Always defer cancel">
+  `ctx, cancel := context.WithTimeout(...)` followed immediately by `defer
+  cancel()` is not boilerplate you can skip. Without it, each call leaks a
+  goroutine and a timer inside the context package — even if your own goroutine
+  exits cleanly.
+</Callout>
+
+## Detecting leaks
+
+Goroutine leaks are invisible until they become visible — usually as a slow, steady rise in memory usage or goroutine count under sustained traffic.
+
+`runtime.NumGoroutine()` returns the number of goroutines currently alive. In tests, you can compare the count before and after running the code under test:
+
+```go
+func TestNoLeak(t *testing.T) {
+    before := runtime.NumGoroutine()
+
+    done := make(chan struct{})
+    go worker(done)
+    close(done)
+
+    time.Sleep(10 * time.Millisecond) // give the goroutine time to exit
+
+    after := runtime.NumGoroutine()
+    if after > before {
+        t.Errorf("goroutine leak: %d before, %d after", before, after)
+    }
+}
+
+```
+
+The `time.Sleep` is a rough approximation — goroutine exit is not synchronous with `close(done)`. For precise detection, signal completion through `sync.WaitGroup` before taking the second measurement.
+
+For a more ergonomic solution, the `goleak` package (`github.com/uber-go/goleak`) integrates with the testing package and reports goroutines that outlive the test:
+
+```go
+func TestMain(m *testing.M) {
+    goleak.VerifyTestMain(m)
+}
+
+```
+
+With `VerifyTestMain`, any test that leaves a goroutine running after it returns will fail with a clear description of the leaked goroutine — its stack trace, creation site, and the blocking call it is stuck on.
+
+## A checklist for every goroutine
+
+Before launching a goroutine, confirm:
+
+1. **Natural exit** — does the function return when the work is done?
+2. **Error exit** — does it return (not block) when something goes wrong?
+3. **Cancellation path** — is there a `done` channel or `context.Context` the caller can use to stop it?
+4. **Caller responsibility** — is someone actually calling `close(done)` or `cancel()` when the goroutine is no longer needed?
+
+If any of these is missing, the goroutine may leak. The cost of answering these questions once, at the time you write the `go` statement, is far lower than diagnosing a memory leak in production weeks later.

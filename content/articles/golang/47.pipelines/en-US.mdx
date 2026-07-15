@@ -1,0 +1,203 @@
+---
+title: Pipelines, fan-out, and fan-in
+description: Learn how to structure concurrent Go programs as pipelines of stages connected by channels, and how fan-out and fan-in parallelize the expensive ones.
+slug: pipelines
+publishedAt: '2026-05-09'
+keywords:
+  - golang
+  - pipelines
+  - fan-out
+  - fan-in
+  - concurrency
+  - channels
+  - goroutines
+---
+
+Most concurrent programs share the same underlying shape: some work arrives, gets transformed in several steps, and a final result comes out the other end. Writing that as a single function works until one of the steps becomes the bottleneck — at which point you need a way to parallelize just that step without rewiring everything else.
+
+Pipelines give you that structure. Fan-out and fan-in give you the tools to scale individual stages. Together they form the backbone of most non-trivial Go concurrency.
+
+## Pipelines
+
+A pipeline is a series of **stages** connected by channels. Each stage is a function that:
+
+1. Receives values from an inbound channel
+2. Applies some transformation to each value
+3. Sends the results to an outbound channel
+
+Because stages only communicate through channels, they are completely decoupled. You can replace, duplicate, or reorder them without touching the others. The channels define the contract; the functions behind them are free to change.
+
+The **generator** is always the first stage. It takes some input — a slice, a file, a queue — and feeds it into the pipeline one value at a time. When the input is exhausted, it closes its output channel, and that close signal propagates downstream: each stage that ranges over a closed channel exits its loop naturally.
+
+Here is a small streaming pipeline that generates integers, squares them, and then filters to keep only even results:
+
+```go
+func generate(nums ...int) <-chan int {
+    out := make(chan int)
+    go func() {
+        defer close(out)
+        for _, n := range nums {
+            out <- n
+        }
+    }()
+    return out
+}
+
+func square(in <-chan int) <-chan int {
+    out := make(chan int)
+    go func() {
+        defer close(out)
+        for n := range in {
+            out <- n * n
+        }
+    }()
+    return out
+}
+
+func filterEven(in <-chan int) <-chan int {
+    out := make(chan int)
+    go func() {
+        defer close(out)
+        for n := range in {
+            if n%2 == 0 {
+                out <- n
+            }
+        }
+    }()
+    return out
+}
+
+func main() {
+    nums := generate(1, 2, 3, 4, 5, 6, 7, 8)
+    squared := square(nums)
+    evens := filterEven(squared)
+
+    for n := range evens {
+        fmt.Println(n)
+    }
+}
+
+```
+
+Each stage function returns a `<-chan int` and launches a goroutine that does the work. The `defer close(out)` in each goroutine ensures the downstream stage will see the channel close as soon as the upstream source is exhausted. The `main` function assembles the stages and ranges over the final channel — it never sees the intermediate channels.
+
+This is **streaming**: values flow through each stage as soon as they are produced, without waiting for the previous stage to finish processing the entire input.
+
+<Callout type="note" title="Streaming vs. batch">
+  In a streaming pipeline, each stage processes values one at a time as they
+  arrive — no stage waits for all upstream values before starting. In a batch
+  pipeline, a stage collects all upstream values into a slice, processes the
+  whole slice, and then sends results downstream. Streaming has lower latency;
+  batch is sometimes necessary when a stage needs global knowledge (e.g.,
+  sorting).
+</Callout>
+
+The `for n := range evens` in `main` is the **consumer** — it drives the whole pipeline. Nothing flows until someone reads from the final channel. If `main` stopped reading, the `filterEven` goroutine would block trying to send, the `square` goroutine would block behind it, and so on. The pipeline is demand-driven.
+
+## Fan-out
+
+A single goroutine per stage is fine until one stage becomes the bottleneck. If `square` takes 100ms per value and you have 1000 values, the entire pipeline takes 100 seconds regardless of how fast the other stages are.
+
+**Fan-out** solves this by running multiple copies of the slow stage in parallel. All copies read from the same input channel — Go's channel receive is safe for concurrent readers, and whichever goroutine happens to be idle picks up the next value automatically, distributing work without any manual partitioning.
+
+```go
+func fanOut(in <-chan int, workers int) []<-chan int {
+    channels := make([]<-chan int, workers)
+    for i := range workers {
+        channels[i] = square(in)
+    }
+    return channels
+}
+
+```
+
+Each call to `square(in)` starts a new goroutine that reads from the same `in` channel. The result is `workers` independent output channels, each carrying a subset of the squared values.
+
+<Callout type="note" title="Do not close the input yourself">
+  In fan-out, the producer owns the input channel and is the only party that
+  should close it. The workers just read from it. When the producer closes the
+  channel, all workers' `range` loops exit cleanly on their own — no
+  coordination needed.
+</Callout>
+
+Fan-out is most effective when the stage is CPU-bound (heavy computation) or I/O-bound (network requests, disk reads). For a stage that is just reshaping data in memory, the channel overhead outweighs the benefit.
+
+## Fan-in
+
+Fan-out gives you N output channels — one per worker. But the rest of the pipeline typically expects a single channel. **Fan-in** merges multiple channels into one.
+
+The merge function launches one goroutine per input channel. Each goroutine drains its channel and forwards values to a shared output channel. A `sync.WaitGroup` tracks when all of them finish; the goroutine waiting on the WaitGroup then closes the output:
+
+```go
+func merge(cs ...<-chan int) <-chan int {
+    var wg sync.WaitGroup
+    out := make(chan int)
+
+    forward := func(c <-chan int) {
+        defer wg.Done()
+        for n := range c {
+            out <- n
+        }
+    }
+
+    wg.Add(len(cs))
+    for _, c := range cs {
+        go forward(c)
+    }
+
+    go func() {
+        wg.Wait()
+        close(out)
+    }()
+
+    return out
+}
+
+```
+
+`merge` returns immediately with a channel that will receive values from all the input channels as they arrive. The order of values in the merged channel is not guaranteed — it depends entirely on which worker goroutine produces a result first. If the downstream stage needs ordering, that must be imposed explicitly (e.g., by tagging each value with an index).
+
+<Callout type="warning" title="Only one goroutine should close the output">
+  The `close(out)` in `merge` is called by a single dedicated goroutine that
+  waits on the WaitGroup. If you were to call `close` from each forwarding
+  goroutine directly, multiple goroutines might race to close the same channel —
+  which panics. The WaitGroup + dedicated closer is the idiomatic way to avoid
+  this.
+</Callout>
+
+## Fan-out then fan-in
+
+Fan-out and fan-in are almost always used together. The combined pattern looks like this:
+
+```go
+func main() {
+    // Stage 1: generate
+    nums := generate(1, 2, 3, 4, 5, 6, 7, 8)
+
+    // Stage 2: fan-out — 4 workers all reading from nums
+    workers := fanOut(nums, 4)
+
+    // Stage 3: fan-in — merge the 4 result channels back into one
+    results := merge(workers...)
+
+    // Stage 4: consume
+    for n := range results {
+        fmt.Println(n)
+    }
+}
+
+```
+
+The generator produces values. The fan-out distributes them across four workers running `square` in parallel. The fan-in collects all squared results into one channel. The consumer reads from that channel — without knowing or caring how many workers ran in parallel.
+
+This pattern scales naturally: changing the number of workers requires touching only the `fanOut` call. The generator, merge function, and consumer are unchanged.
+
+|                          | Fan-out                                            | Fan-in                                                           |
+| ------------------------ | -------------------------------------------------- | ---------------------------------------------------------------- |
+| **Direction**            | 1 → N                                              | N → 1                                                            |
+| **Goal**                 | Parallelism                                        | Aggregation                                                      |
+| **Channel pattern**      | N goroutines read the same input channel           | N goroutines write their own channel; a merge function reads all |
+| **Close responsibility** | Producer closes input; workers do not              | Merge function closes output after `WaitGroup` completes         |
+| **Gotcha**               | Do not close the input before all workers are done | Do not close the output from each worker — use a single closer   |
+
+The pipeline pattern gives you clean separation between stages. Fan-out and fan-in are the mechanisms that turn a sequential stage into a parallel one without touching any other stage. Combined, they let you tune the concurrency of each stage independently as your performance requirements change.

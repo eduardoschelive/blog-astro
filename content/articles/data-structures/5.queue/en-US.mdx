@@ -1,0 +1,307 @@
+---
+title: Queues
+description: Learn how queues enforce FIFO order to manage data. Explore enqueue, dequeue, and peek operations, circular buffer vs linked list implementations, and why queues drive task scheduling and BFS.
+slug: queue
+publishedAt: '2026-03-09'
+keywords:
+  [
+    queue,
+    FIFO,
+    enqueue,
+    dequeue,
+    peek,
+    circular buffer,
+    data structures,
+    BFS,
+    breadth-first search,
+    task scheduling,
+    linked list implementation,
+    array implementation,
+    C programming,
+  ]
+---
+
+## What is a Queue
+
+A **queue** is a collection that enforces a single rule: the first element added is the first one removed. This is called **FIFO** — First In, First Out.
+
+Think of a line of people waiting at a counter. The first person to arrive is the first person served. Nobody cuts in front — new arrivals go to the back, and people leave from the front.
+
+<Example title="The waiting line analogy">
+
+Imagine a queue at a coffee shop. The first customer in line is served first. New customers join the back of the line. No matter how long the line gets, the order is always preserved — whoever has been waiting longest goes next.
+
+A queue works exactly like this. The element that has been in the collection the longest is always the next one out.
+
+</Example>
+
+Unlike arrays and linked lists, a queue doesn't give you access to any arbitrary element. It exposes exactly two ends: you add to the rear and remove from the front.
+
+This distinction matters: a queue is an **abstract data type** (ADT), not a concrete data structure. It defines _what_ operations are allowed and what rules they follow — but says nothing about _how_ the data is stored in memory. Arrays and linked lists are concrete data structures: they describe a specific memory layout. A queue is a contract. You can honor that contract using a circular array, a linked list, or anything else that supports enqueue and dequeue with FIFO semantics.
+
+A queue is the mirror of a stack. A stack is LIFO — the last element in is the first out. A queue is FIFO — the first element in is the first out. Same idea of a restricted interface, opposite ordering rule.
+
+## The three operations
+
+A queue's entire interface is three operations:
+
+- **enqueue** — add an element to the rear
+- **dequeue** — remove the element from the front
+- **peek** — read the front element without removing it
+
+That's it. No indexing, no searching, no middle insertion. The constraint is the feature.
+
+### enqueue: adding to the rear
+
+`enqueue` places a new element at the rear of the queue. Every enqueue increases the queue's size by one.
+
+<QueueVisualization
+  title="enqueue(99) on [3, 8, 17, 42]:"
+  items={[3, 8, 17, 42]}
+  incoming={99}
+>
+  99 joins at the rear — 3 is still the front and will be next out
+</QueueVisualization>
+
+This is <Tooltip title="Constant time" content="O(1) — adding to the rear takes the same time regardless of queue size">O(1)</Tooltip>. You're always adding to the same place.
+
+### dequeue: removing from the front
+
+`dequeue` removes the front element and returns it. The element behind it becomes the new front.
+
+<QueueVisualization
+  title="dequeue() from [3, 8, 17, 42]:"
+  items={[3, 8, 17, 42]}
+  outgoing
+>
+  3 is removed — 8 is now the front
+</QueueVisualization>
+
+Also <Tooltip title="Constant time" content="O(1) — removing from the front takes the same time regardless of queue size">O(1)</Tooltip>. You're always removing from the same place.
+
+### peek: looking without touching
+
+`peek` (sometimes called `front`) returns the front element without removing it. Use it when you need to check what's next before deciding whether to dequeue.
+
+```c
+// After enqueue(3), enqueue(8), enqueue(17):
+// Queue: front → [3, 8, 17] ← rear
+
+peek() → returns 3
+// Queue is still: front → [3, 8, 17] ← rear
+```
+
+`peek` is also <Tooltip title="Constant time" content="O(1) — reading the front element is a direct access">O(1)</Tooltip>.
+
+## Array-based implementation
+
+The obvious approach is to use an array with a `front` index and a `rear` index — `front` points to the element to dequeue, `rear` points to where the next enqueue lands.
+
+The problem: both indices march forward and never go back. After enough enqueue and dequeue operations, `rear` reaches the end of the array even though the front portion is empty and wasted.
+
+```
+After 3 enqueues and 3 dequeues on a size-6 array:
+[ _, _, _, 7, 8, 9 ]
+  ↑        ↑
+ wasted   front
+
+One more enqueue would move rear out of bounds — but 3 slots are free!
+```
+
+The solution is a **circular buffer**: wrap `rear` back to index 0 when it reaches the end, using the modulo operator. The array is treated as a ring.
+
+```c
+#define MAX 100
+
+struct Queue {
+    int data[MAX];
+    int front;
+    int rear;
+    int size;
+};
+
+void queue_init(struct Queue *q) {
+    q->front = 0;
+    q->rear  = 0;
+    q->size  = 0;
+}
+
+int queue_is_empty(struct Queue *q) {
+    return q->size == 0;
+}
+
+int queue_is_full(struct Queue *q) {
+    return q->size == MAX;
+}
+```
+
+Using `size` to track the count is cleaner than computing it from `front` and `rear` — there's an ambiguous case where `front == rear` could mean either empty or full.
+
+```c
+void enqueue(struct Queue *q, int value) {
+    if (queue_is_full(q)) return;  // queue overflow
+    q->data[q->rear] = value;
+    q->rear = (q->rear + 1) % MAX;  // wrap around
+    q->size++;
+}
+
+int dequeue(struct Queue *q) {
+    if (queue_is_empty(q)) return -1;  // queue underflow
+    int value = q->data[q->front];
+    q->front = (q->front + 1) % MAX;  // wrap around
+    q->size--;
+    return value;
+}
+
+int peek(struct Queue *q) {
+    if (queue_is_empty(q)) return -1;
+    return q->data[q->front];
+}
+```
+
+<Callout type="warning">
+  Two failure modes to handle: **queue overflow** — enqueueing onto a full queue
+  — and **queue underflow** — dequeueing from an empty queue. Both are silent
+  bugs if not checked explicitly. The modulo wrap makes them especially
+  dangerous: an out-of-bounds write in a circular buffer silently overwrites
+  data at a valid index.
+</Callout>
+
+The circular buffer reuses slots as the queue advances. The tradeoff is the fixed upper bound: you must know the maximum queue size in advance.
+
+## Linked-list-based implementation
+
+A linked list removes the fixed-size constraint. Unlike the linked-list stack (which only needed a `head` pointer), a queue must track both ends: **head** is the front (dequeue), **tail** is the rear (enqueue).
+
+Both operations remain O(1) because you always have a direct pointer to whichever end you need.
+
+```c
+struct Node {
+    int value;
+    struct Node *next;
+};
+
+struct Queue {
+    struct Node *head;  // front — dequeue here
+    struct Node *tail;  // rear  — enqueue here
+};
+
+void queue_init(struct Queue *q) {
+    q->head = NULL;
+    q->tail = NULL;
+}
+```
+
+```c
+void enqueue(struct Queue *q, int value) {
+    struct Node *node = malloc(sizeof(struct Node));
+    node->value = value;
+    node->next  = NULL;
+    if (q->tail != NULL) q->tail->next = node;
+    q->tail = node;
+    if (q->head == NULL) q->head = node;  // first element
+}
+
+int dequeue(struct Queue *q) {
+    if (q->head == NULL) return -1;
+    struct Node *temp = q->head;
+    int value = temp->value;
+    q->head = q->head->next;
+    if (q->head == NULL) q->tail = NULL;  // queue is now empty
+    free(temp);
+    return value;
+}
+
+int peek(struct Queue *q) {
+    if (q->head == NULL) return -1;
+    return q->head->value;
+}
+```
+
+<Callout type="info">
+  This builds on the [Linked Lists
+  article](/categories/data-structures/articles/linked-lists): enqueue appends
+  at the tail (O(1) because we track the tail pointer), dequeue removes from the
+  head (O(1) because we track the head pointer). A queue is a linked list with
+  access restricted to exactly these two ends.
+</Callout>
+
+**Choosing between implementations:**
+
+|               | Array-based (circular)  | Linked-list-based           |
+| ------------- | ----------------------- | --------------------------- |
+| Max size      | Fixed at creation       | Unlimited                   |
+| Memory        | Compact, cache-friendly | Scattered, pointer overhead |
+| Overflow risk | Yes (bounded)           | Only if memory is exhausted |
+| Allocation    | None (pre-allocated)    | One malloc per enqueue      |
+| Complexity    | Modulo arithmetic       | Two-pointer management      |
+
+For small, bounded queues — a fixed-size event buffer, a producer-consumer ring buffer — the array version is simpler and faster in practice. For unbounded queues where the maximum size is unknown, use the linked list.
+
+## Common operations and their costs
+
+| Operation          | Time | Why                                        |
+| ------------------ | ---- | ------------------------------------------ |
+| enqueue            | O(1) | Always adds to the rear                    |
+| dequeue            | O(1) | Always removes from the front              |
+| peek               | O(1) | Direct read of the front element           |
+| Search by value    | O(n) | Must scan every element from front to rear |
+| Access by position | O(n) | No index — must dequeue down to that level |
+
+All three core operations are O(1). The constraint that makes a queue limited — only the front and rear are accessible — is exactly what makes it fast.
+
+## Queues in the real world
+
+### Print queues
+
+The original use case that gave queues their name in computing. Every document sent to a printer joins a queue. The first document submitted is the first one printed. New jobs wait at the rear. The FIFO guarantee means nobody's job mysteriously jumps ahead.
+
+### Task scheduling
+
+Operating system schedulers manage processes using queues. When multiple processes are ready to run, they wait in a queue. The CPU runs them one at a time in arrival order, giving each a time slice before moving to the next. Round-robin scheduling is a queue where dequeued processes re-enqueue after their slice.
+
+### Breadth-first search
+
+Graph traversal using breadth-first search (BFS) uses a queue — the counterpart of DFS, which uses a stack. When you reach a node, enqueue its unvisited neighbors. Dequeue the next node to visit, repeat. The FIFO order ensures you explore all nodes at distance 1 before any at distance 2, all at distance 2 before any at distance 3. This is how shortest-path algorithms work on unweighted graphs.
+
+```c
+// BFS explores layer by layer:
+// Start: [A]
+// Layer 1: [B, C]       (neighbors of A)
+// Layer 2: [D, E, F]    (neighbors of B and C)
+// Stack (DFS) would go deep; Queue (BFS) goes wide.
+```
+
+### Event queues
+
+Every GUI framework, game loop, and network server processes events through a queue. Mouse clicks, key presses, incoming packets — each event is enqueued as it arrives and dequeued in order when the program is ready to handle it. This decouples producers (the OS delivering events) from consumers (your application code), smoothing out bursts.
+
+### Producer-consumer
+
+Queues are the canonical solution to the producer-consumer problem: one component produces work items faster or slower than another consumes them. The queue absorbs the difference. A web server enqueues incoming requests; a pool of worker threads dequeues and handles them. The queue buffers bursts and keeps both sides running at their natural pace.
+
+## When Queues fall short
+
+Queues are powerful precisely because of what they refuse to do.
+
+**No random access.** You can't reach the 3rd element without dequeueing the 1st and 2nd first. If you need to inspect or modify elements at arbitrary positions, a queue is the wrong structure.
+
+**FIFO only.** Queues process elements in arrival order. If some elements are more urgent than others — a high-priority process that should jump to the front — a plain queue can't express that. Use a **priority queue** instead, which orders elements by a priority key rather than arrival time.
+
+**Only two accessible ends.** If your problem requires adding or removing from either end — like a sliding window that shrinks from both sides — use a **deque** (double-ended queue). A deque supports enqueue and dequeue at both front and rear.
+
+**Poor for search.** Finding a specific value requires dequeueing everything ahead of it, which destroys the original queue order. Use a different structure when search is a primary operation.
+
+## Summary
+
+Queues are the simplest fair structure you can put on a collection:
+
+- **FIFO discipline** — the first element in is always the first one out
+- **O(1) enqueue, dequeue, and peek** — all three core operations take constant time
+- **Two implementation paths** — circular array (bounded, cache-friendly) or linked-list (unbounded, two-pointer management)
+- **The scheduler's building block** — every fair system that must process requests in arrival order uses a queue
+- **BFS's backbone** — breadth-first search is a queue the same way DFS is a stack
+
+The key insight is that queues enforce fairness. An unconstrained data structure lets you reorder, skip, and prioritize freely — but that freedom forces every caller to reason about order explicitly. A queue makes one guarantee: first come, first served. That guarantee is why queues appear everywhere systems must handle concurrent requests without unfairness.
+
+Queues and stacks are complementary. Understanding both is understanding the two fundamental orderings for processing sequential data: LIFO for last-in-first-out reversal (undo, recursion, backtracking) and FIFO for first-in-first-out fairness (scheduling, BFS, buffering).

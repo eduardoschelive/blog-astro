@@ -1,0 +1,362 @@
+---
+title: Errors
+description: Learn how Go handles errors explicitly through return values, how to create and wrap errors, and how to compare them using errors.Is and errors.As.
+slug: errors
+publishedAt: '2026-04-27'
+keywords:
+  - golang
+  - errors
+  - error handling
+  - sentinel errors
+  - error wrapping
+  - errors.Is
+  - errors.As
+  - fmt.Errorf
+---
+
+In most languages, errors interrupt the normal flow of execution. An exception is thrown, the stack unwinds, and a catch block somewhere handles it — often far from where the failure actually occurred. Go takes a fundamentally different approach: errors are ordinary values, returned and checked like any other result. There is no throw, no catch, no implicit propagation. When a function can fail, it declares that in its signature, and the caller decides what to do next.
+
+## The error interface
+
+The `error` type is a predeclared [interface](/en-US/categories/golang/articles/interfaces) with a single method:
+
+```go
+type error interface {
+    Error() string
+}
+
+```
+
+Any type that implements `Error() string` satisfies `error`. The standard library's built-in error types are nothing special — they implement the same interface you can implement yourself, which is why errors in Go are composable and extensible by design.
+
+## Creating errors
+
+The `errors` package provides the simplest way to create an error from a fixed string:
+
+```go
+err := errors.New("connection refused")
+
+```
+
+When the message needs to include runtime values, use `fmt.Errorf`:
+
+```go
+err := fmt.Errorf("user %d not found", id)
+
+```
+
+Both return a value that satisfies `error`. For cases where callers need to inspect the error's fields — not just read its message — define a custom type:
+
+```go
+type ValidationError struct {
+    Field   string
+    Message string
+}
+
+func (e *ValidationError) Error() string {
+    return e.Field + ": " + e.Message
+}
+
+```
+
+`*ValidationError` satisfies `error` because it implements `Error() string`. Callers that only need the message treat it as any other error; callers that need the structured data can extract it using `errors.As`, covered later.
+
+Custom error types become more powerful when they carry structured context and wrap an underlying cause:
+
+```go
+type QueryError struct {
+    Op    string // operation that failed ("insert", "select", ...)
+    Table string // table being queried
+    Err   error  // underlying error
+}
+
+func (e *QueryError) Error() string {
+    return fmt.Sprintf("%s on %s: %v", e.Op, e.Table, e.Err)
+}
+
+func (e *QueryError) Unwrap() error {
+    return e.Err
+}
+
+```
+
+`*QueryError` satisfies `error` and also participates in error chains: the `Unwrap` method exposes the underlying cause so `errors.Is` and `errors.As` can traverse through it. Callers that only need the message see "insert on users: duplicate key"; callers that need to react to specific fields — for example, to log the operation and table name, or to retry a specific query type — can extract the struct with `errors.As`.
+
+## Handling errors
+
+By convention, a function that can fail returns `error` as its last return value:
+
+```go
+func readFile(path string) ([]byte, error) {
+    // ...
+}
+
+```
+
+The caller checks the error before using the result:
+
+```go
+data, err := readFile("config.json")
+if err != nil {
+    return nil, err
+}
+
+```
+
+This `if err != nil` pattern is idiomatic Go. The error is addressed immediately at the call site, not deferred to a handler block elsewhere. Errors propagate through the call stack one explicit check at a time, which keeps the failure path as readable as the success path. Multiple nested try-catch blocks obscure which operations can fail and how they relate; explicit returns make every failure visible.
+
+Two conventions govern error strings: they do not start with a capital letter and do not end with punctuation. Errors are often composed into larger messages, and these conventions keep the result readable:
+
+```go
+// if err.Error() is "connection refused"
+fmt.Errorf("dial database: %v", err)
+// → "dial database: connection refused"
+// not: "Dial database: Connection refused."
+
+```
+
+<Callout type="note" title="The compiler does not force error checks">
+  Go forbids unused variables, but assigning an error to `_` is valid — errors
+  can be silently discarded. The discipline to check every error is a convention
+  enforced by code review and linters like `errcheck`, not by the compiler.
+</Callout>
+
+## Sentinel errors
+
+A sentinel error is a package-level exported variable that represents a specific, identifiable condition:
+
+```go
+var ErrNotFound = errors.New("not found")
+
+```
+
+A function returns the sentinel when that condition occurs:
+
+```go
+func findUser(id int) (User, error) {
+    if id == 0 {
+        return User{}, ErrNotFound
+    }
+    // ...
+}
+
+```
+
+The caller checks the returned error against the sentinel to distinguish this case from others:
+
+```go
+user, err := findUser(0)
+if err == ErrNotFound {
+    // handle the not-found case specifically
+}
+
+```
+
+The standard library uses this pattern throughout: `io.EOF` signals the end of a data stream; `sql.ErrNoRows` signals that a query returned no rows. Sentinel errors let callers react to specific conditions without parsing error strings.
+
+<Callout type="note" title="Sentinel errors use var, not const">
+  Interface values cannot be constants in Go, so sentinel errors are declared as
+  `var`. This means they are technically mutable — but mutating a sentinel would
+  break any code that compares against it. Treat them as immutable by
+  convention.
+</Callout>
+
+## Wrapping errors
+
+When propagating an error up the call stack, callers often need to add context. Without wrapping, the original error travels unchanged and the call path is invisible:
+
+```go
+func loadConfig(path string) (Config, error) {
+    data, err := readFile(path)
+    if err != nil {
+        return Config{}, err // no context about where or why
+    }
+    // ...
+}
+
+```
+
+`fmt.Errorf` with the `%w` verb wraps the original error while adding a message:
+
+```go
+func loadConfig(path string) (Config, error) {
+    data, err := readFile(path)
+    if err != nil {
+        return Config{}, fmt.Errorf("loadConfig %s: %w", path, err)
+    }
+    // ...
+}
+
+```
+
+The wrapped error is preserved in an error chain — the series of errors linked together by wrapping. The original error remains accessible through the chain; callers can inspect it with `errors.Is` and `errors.As`, covered below.
+
+Using `%v` instead of `%w` includes the original message in the formatted string but breaks the chain:
+
+```go
+return Config{}, fmt.Errorf("loadConfig: %v", err) // chain broken, original unreachable
+
+```
+
+To combine multiple independent errors into one, use `errors.Join`:
+
+```go
+err1 := errors.New("missing field: name")
+err2 := errors.New("missing field: email")
+
+combined := errors.Join(err1, err2)
+fmt.Println(combined)
+// missing field: name
+// missing field: email
+
+```
+
+`errors.Join` discards nil errors. If every provided error is nil, it returns nil.
+
+## Unwrapping errors
+
+`errors.Unwrap` retrieves the next error in the chain:
+
+```go
+inner := errors.New("connection refused")
+outer := fmt.Errorf("dial: %w", inner)
+
+fmt.Println(errors.Unwrap(outer)) // connection refused
+fmt.Println(errors.Unwrap(inner)) // <nil>
+
+```
+
+`errors.Unwrap` calls the `Unwrap() error` method on the value if present. Errors created by `fmt.Errorf` with `%w` implement this method automatically. When the error has no further chain, `errors.Unwrap` returns nil.
+
+Errors created by `errors.Join` implement `Unwrap() []error` instead, returning all wrapped errors as a slice. `errors.Unwrap` does not handle this form — it returns nil for them.
+
+<Callout
+  type="warning"
+  title="errors.Unwrap does not traverse errors.Join chains"
+>
+  `errors.Unwrap` only follows `Unwrap() error`. It returns nil for errors from
+  `errors.Join`, which implement `Unwrap() []error`. To search through joined
+  errors, use `errors.Is` or `errors.As` — they handle both single and slice
+  unwrapping.
+</Callout>
+
+## Comparing errors
+
+Comparing errors with `==` only works reliably for sentinels. Once an error is wrapped, `==` fails to find the original — the wrapper is a different value. `errors.Is` and `errors.As` traverse the entire chain.
+
+### errors.Is
+
+`errors.Is(err, target)` returns true if any error in the chain matches `target`:
+
+```go
+var ErrNotFound = errors.New("not found")
+
+inner := ErrNotFound
+outer := fmt.Errorf("findUser: %w", inner)
+
+fmt.Println(errors.Is(outer, ErrNotFound)) // true
+fmt.Println(outer == ErrNotFound)          // false
+
+```
+
+The default comparison is `==`. An error type can override this by implementing an `Is(target error) bool` method. When present, `errors.Is` calls it instead of using `==`:
+
+```go
+type NotFoundError struct {
+    ID int
+}
+
+func (e *NotFoundError) Error() string {
+    return fmt.Sprintf("id %d not found", e.ID)
+}
+
+func (e *NotFoundError) Is(target error) bool {
+    t, ok := target.(*NotFoundError)
+    if !ok {
+        return false
+    }
+    return e.ID == t.ID
+}
+
+```
+
+With this method, two `*NotFoundError` values with the same `ID` are considered equal by `errors.Is`, regardless of pointer identity:
+
+```go
+err := fmt.Errorf("operation failed: %w", &NotFoundError{ID: 42})
+
+fmt.Println(errors.Is(err, &NotFoundError{ID: 42})) // true
+fmt.Println(errors.Is(err, &NotFoundError{ID: 99})) // false
+
+```
+
+### errors.As
+
+`errors.As(err, target)` traverses the chain and, if it finds an error whose type is assignable to the type pointed to by `target`, sets `target` and returns true. This is the standard way to extract structured data from custom error types.
+
+Using the `QueryError` type defined earlier:
+
+```go
+err := fmt.Errorf("createUser: %w", &QueryError{
+    Op:    "insert",
+    Table: "users",
+    Err:   errors.New("duplicate key"),
+})
+
+var qe *QueryError
+if errors.As(err, &qe) {
+    fmt.Println(qe.Op)    // insert
+    fmt.Println(qe.Table) // users
+    fmt.Println(qe.Err)   // duplicate key
+}
+
+```
+
+`errors.As` unwraps through the chain automatically — here it finds `*QueryError` inside the `fmt.Errorf` wrapper without you having to unwrap manually.
+
+The same pattern works with any custom struct:
+
+```go
+outer := fmt.Errorf("validate: %w", &ValidationError{Field: "email", Message: "invalid format"})
+
+var ve *ValidationError
+if errors.As(outer, &ve) {
+    fmt.Println(ve.Field)   // email
+    fmt.Println(ve.Message) // invalid format
+}
+
+```
+
+`target` must be a non-nil pointer to either a type that implements `error`, or to any interface type. An error type can customize matching behavior with an `As(target any) bool` method. This is particularly useful when you want `errors.As` to match against an interface rather than a concrete type:
+
+```go
+type Retryable interface {
+    Retryable() bool
+}
+
+type TimeoutError struct{}
+
+func (e *TimeoutError) Error() string    { return "request timed out" }
+func (e *TimeoutError) Retryable() bool  { return true }
+
+func (e *TimeoutError) As(target any) bool {
+    if t, ok := target.(*Retryable); ok {
+        *t = e
+        return true
+    }
+    return false
+}
+
+```
+
+A caller can then extract the `Retryable` interface from the chain without knowing the concrete type:
+
+```go
+err := fmt.Errorf("connect: %w", &TimeoutError{})
+
+var r Retryable
+if errors.As(err, &r) && r.Retryable() {
+    // retry the operation
+}
+
+```

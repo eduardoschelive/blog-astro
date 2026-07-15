@@ -1,0 +1,396 @@
+---
+title: The fmt package in depth
+description: Master Go's fmt package — format verbs, width and alignment, the Stringer and GoStringer interfaces, and the full family of print and scan functions.
+slug: fmt
+publishedAt: '2026-05-04'
+keywords:
+  - golang
+  - fmt
+  - format verbs
+  - Stringer
+  - GoStringer
+  - fmt.Errorf
+  - fmt.Sprintf
+  - fmt.Fprintf
+---
+
+Every Go program uses `fmt`. It is the package you reach for when printing a value to the terminal, formatting a string with dynamic data, logging a message to standard error, or building a human-readable representation of a type. Despite its familiarity, most developers only use a fraction of what `fmt` offers. Understanding the full set of format verbs, how width and alignment work, and how `fmt` interacts with your own types will make your output more readable and your code more expressive.
+
+## The function families
+
+`fmt` exposes three families of output functions, distinguished by where the result goes, plus a fourth for reading input.
+
+The **Print** family writes to standard output (`os.Stdout`):
+
+```go
+fmt.Print("hello")          // no newline, no spaces between args
+fmt.Println("hello", "world") // adds spaces, then newline
+fmt.Printf("x = %d\n", 42)  // format string with verbs
+
+```
+
+The **Fprint** family writes to any `io.Writer`. This is the more flexible form — it works with files, network connections, HTTP response writers, or any custom type that satisfies `io.Writer`:
+
+```go
+fmt.Fprint(os.Stderr, "something went wrong")
+fmt.Fprintln(w, "Content-Type: text/plain")
+fmt.Fprintf(logFile, "[%s] request took %dms\n", time.Now().Format(time.RFC3339), elapsed)
+
+```
+
+The **Sprint** family returns a formatted string instead of writing anywhere. Use these when you need to build a string for later use:
+
+```go
+s := fmt.Sprint("hello", " ", "world")    // "hello  world" (spaces added between non-string args)
+s := fmt.Sprintln("hello", "world")       // "hello world\n"
+s := fmt.Sprintf("user: %s, id: %d", name, id)
+
+```
+
+The **Scan** family reads and parses values from standard input or a string, covered at the end of this article.
+
+| Family                    | Destination      | Returns              |
+| ------------------------- | ---------------- | -------------------- |
+| `Print/Println/Printf`    | `os.Stdout`      | `(n int, err error)` |
+| `Fprint/Fprintln/Fprintf` | any `io.Writer`  | `(n int, err error)` |
+| `Sprint/Sprintln/Sprintf` | —                | `string`             |
+| `Scan/Scanln/Scanf`       | reads `os.Stdin` | `(n int, err error)` |
+
+<Callout type="note" title="Spaces between arguments">
+  `Print` and `Sprint` add a space between two operands when neither is a
+  string. `Println` and `Sprintln` always add spaces between all operands.
+  `Printf` and `Sprintf` never add spaces — the format string controls
+  everything.
+</Callout>
+
+## Format verbs
+
+A format verb is a `%` followed by one or more characters. It tells `fmt` how to represent a value. Verbs apply to the next argument in the call.
+
+### General-purpose verbs
+
+These work on any type and are the most commonly used:
+
+| Verb  | Description                  |
+| ----- | ---------------------------- |
+| `%v`  | Default format for the value |
+| `%+v` | Struct with field names      |
+| `%#v` | Go syntax representation     |
+| `%T`  | Type of the value            |
+
+`%v` is the catch-all. It produces the most natural human-readable representation of each type — decimal for integers, floating-point notation for floats, `true`/`false` for booleans, and for structs, the field values in braces:
+
+```go
+type Point struct {
+    X, Y int
+}
+p := Point{3, 4}
+
+fmt.Printf("%v\n",  p) // {3 4}
+fmt.Printf("%+v\n", p) // {X:3 Y:4}
+fmt.Printf("%#v\n", p) // main.Point{X:3, Y:4}
+fmt.Printf("%T\n",  p) // main.Point
+
+```
+
+`%+v` adds field names to struct output — useful for debugging when field order is ambiguous. `%#v` goes further and produces valid Go literal syntax, complete with the package-qualified type name. `%T` gives you the type itself, which is handy when you need to log what kind of value arrived at a function.
+
+### Integer verbs
+
+| Verb | Representation                 |
+| ---- | ------------------------------ |
+| `%d` | Decimal                        |
+| `%b` | Binary                         |
+| `%o` | Octal                          |
+| `%O` | Octal with `0o` prefix         |
+| `%x` | Hexadecimal, lowercase         |
+| `%X` | Hexadecimal, uppercase         |
+| `%c` | Character (Unicode code point) |
+| `%U` | Unicode format: `U+0041`       |
+
+```go
+n := 255
+
+fmt.Printf("%d\n", n)  // 255
+fmt.Printf("%b\n", n)  // 11111111
+fmt.Printf("%o\n", n)  // 377
+fmt.Printf("%x\n", n)  // ff
+fmt.Printf("%X\n", n)  // FF
+fmt.Printf("%c\n", 65) // A
+fmt.Printf("%U\n", 65) // U+0041
+
+```
+
+Hexadecimal is commonly used when inspecting raw bytes, encoding values, or generating IDs. The `%c` verb is useful when working with runes: rather than printing the numeric value, it prints the character it represents.
+
+### String and byte verbs
+
+| Verb | Representation                          |
+| ---- | --------------------------------------- |
+| `%s` | Raw string or slice of bytes            |
+| `%q` | Double-quoted, with Go escape sequences |
+| `%x` | Hex encoding of each byte, lowercase    |
+| `%X` | Hex encoding of each byte, uppercase    |
+
+```go
+s := "hello\tworld"
+
+fmt.Printf("%s\n", s)  // hello	world
+fmt.Printf("%q\n", s)  // "hello\tworld"
+fmt.Printf("%x\n", s)  // 68656c6c6f09776f726c64
+
+```
+
+`%q` is especially useful for debugging: it wraps the string in quotes and escapes non-printable characters, so you can see exactly what bytes are in the string — including tabs, newlines, and null bytes that would otherwise be invisible. `%x` on a string treats it as a byte sequence and encodes each byte in hexadecimal.
+
+### Floating-point verbs
+
+| Verb | Representation                              |
+| ---- | ------------------------------------------- |
+| `%f` | Decimal notation, no exponent               |
+| `%e` | Scientific notation, lowercase (`1.23e+04`) |
+| `%E` | Scientific notation, uppercase (`1.23E+04`) |
+| `%g` | `%e` for large exponents, `%f` otherwise    |
+| `%G` | `%E` for large exponents, `%f` otherwise    |
+
+```go
+f := 123456.789
+
+fmt.Printf("%f\n", f)   // 123456.789000
+fmt.Printf("%e\n", f)   // 1.234568e+05
+fmt.Printf("%g\n", f)   // 123456.789
+fmt.Printf("%.2f\n", f) // 123456.79
+
+```
+
+`%g` is a smart default: it picks `%e` when the exponent would be very large or very small, and `%f` otherwise. The default precision for `%f` is six decimal places; you can control this with a precision specifier, shown in the next section.
+
+### Other verbs
+
+| Verb | Type    | Description                                     |
+| ---- | ------- | ----------------------------------------------- |
+| `%t` | bool    | `true` or `false`                               |
+| `%p` | pointer | Memory address in hexadecimal, with `0x` prefix |
+
+```go
+b := true
+fmt.Printf("%t\n", b) // true
+
+x := 42
+fmt.Printf("%p\n", &x) // 0xc0000b4008 (address varies)
+
+```
+
+`%p` is useful for debugging pointer aliasing — when you want to verify whether two pointers point to the same memory address.
+
+## Width, precision, and alignment
+
+Between the `%` and the verb, you can insert a width, a precision, and flags that control how the value is rendered.
+
+The general format is:
+
+```
+%[flags][width][.precision]verb
+```
+
+**Width** sets the minimum number of characters in the output. If the value is shorter, it is padded with spaces on the left (right-aligned by default):
+
+```go
+fmt.Printf("%8d\n",  42)   //       42  (6 spaces + "42")
+fmt.Printf("%8s\n",  "hi") //       hi
+fmt.Printf("%-8d|\n", 42)  // 42      | (left-aligned with -)
+fmt.Printf("%08d\n", 42)   // 00000042  (zero-padded with 0)
+
+```
+
+**Precision** means different things for different types:
+
+- For floats: number of decimal digits after the point
+- For strings: maximum number of characters to print
+
+```go
+fmt.Printf("%.2f\n",   3.14159) // 3.14
+fmt.Printf("%8.2f\n",  3.14159) //     3.14  (width 8, 2 decimal places)
+fmt.Printf("%.5s\n",  "hello world") // hello  (truncated to 5 chars)
+
+```
+
+You can also supply width and precision dynamically using `*`, which reads the next argument:
+
+```go
+fmt.Printf("%*d\n", 8, 42)     //       42
+fmt.Printf("%.*f\n", 3, 3.14159) // 3.142
+
+```
+
+This is useful when the desired column width is determined at runtime — for example, when aligning output in a table whose column widths depend on the data.
+
+| Flag        | Effect                                             |
+| ----------- | -------------------------------------------------- |
+| `-`         | Left-align (default is right-align)                |
+| `0`         | Pad with zeros instead of spaces                   |
+| `+`         | Always print sign for numbers                      |
+| ` ` (space) | Add a leading space for positive numbers           |
+| `#`         | Alternate form (`0x` for hex, `0` for octal, etc.) |
+
+```go
+fmt.Printf("%+d\n", 42)  // +42
+fmt.Printf("%+d\n", -42) // -42
+fmt.Printf("% d\n", 42)  //  42 (leading space)
+fmt.Printf("%#x\n", 255) // 0xff
+
+```
+
+## The Stringer interface
+
+When you pass a value to a `fmt` function with `%v` or `%s`, the package checks whether the value implements the `fmt.Stringer` interface:
+
+```go
+type Stringer interface {
+    String() string
+}
+
+```
+
+If it does, `fmt` calls `String()` and uses the result. This is how you define a human-readable representation for your own types:
+
+```go
+type Direction int
+
+const (
+    North Direction = iota
+    South
+    East
+    West
+)
+
+func (d Direction) String() string {
+    switch d {
+    case North:
+        return "North"
+    case South:
+        return "South"
+    case East:
+        return "East"
+    case West:
+        return "West"
+    default:
+        return fmt.Sprintf("Direction(%d)", int(d))
+    }
+}
+
+```
+
+Without `String()`, printing a `Direction` with `%v` would show the raw integer — `0`, `1`, `2`, `3`. With `String()` implemented:
+
+```go
+d := North
+fmt.Println(d)         // North
+fmt.Printf("%v\n", d)  // North
+fmt.Printf("%s\n", d)  // North
+fmt.Printf("%d\n", d)  // 0  (verb-specific: %d ignores Stringer)
+
+```
+
+Notice that `%d` still prints the underlying integer. Verb-specific formatting bypasses `Stringer`. Only `%v`, `%s`, and the default formatting (via `Println`) invoke `String()`.
+
+<Callout type="warning" title="Avoid calling fmt inside String()">
+  If your `String()` method calls `fmt.Sprintf` with `%v` on the receiver
+  itself, you will trigger infinite recursion — `fmt` calls `String()`, which
+  calls `fmt`, and so on until the stack overflows. Convert the receiver to its
+  underlying type first to break the cycle: `fmt.Sprintf("Direction(%d)",
+  int(d))`.
+</Callout>
+
+Implementing `Stringer` is one of the most impactful things you can do for the usability of a type. It makes values readable in log output, error messages, and debug prints without requiring callers to know the type's internals.
+
+## The GoStringer interface
+
+A parallel interface controls how a value appears when formatted with `%#v`:
+
+```go
+type GoStringer interface {
+    GoString() string
+}
+
+```
+
+`%#v` is designed to produce output that looks like valid Go source code. For types where the default `%#v` output is verbose or incomplete, implementing `GoString` gives you control:
+
+```go
+type Color struct {
+    R, G, B uint8
+}
+
+func (c Color) GoString() string {
+    return fmt.Sprintf("Color{R: 0x%02x, G: 0x%02x, B: 0x%02x}", c.R, c.G, c.B)
+}
+
+c := Color{255, 128, 0}
+fmt.Printf("%#v\n", c) // Color{R: 0xff, G: 0x80, B: 0x00}
+
+```
+
+Without `GoString`, the default `%#v` would produce `main.Color{R:0xff, G:0x80, B:0x00}` — close, but with decimal values. Implementing `GoString` lets you use hex notation, add a comment, or produce any string that best conveys the value's meaning as source code.
+
+`GoStringer` is less commonly needed than `Stringer`, but it is valuable for types that appear frequently in test output or debugging sessions where seeing a Go-literal representation saves time.
+
+## fmt.Errorf and error formatting
+
+`fmt.Errorf` creates an error whose message is a formatted string:
+
+```go
+err := fmt.Errorf("user %d not found in region %s", userID, region)
+
+```
+
+The `%w` verb wraps another error into the new one, preserving it in a chain that `errors.Is` and `errors.As` can traverse:
+
+```go
+if err := db.QueryRow(id); err != nil {
+    return fmt.Errorf("fetchUser %d: %w", id, err)
+}
+
+```
+
+Using `%v` includes the original error's message as plain text but breaks the chain — the original error becomes unreachable to callers. Use `%w` when callers might need to inspect the wrapped error; use `%v` when the original error is an implementation detail not meant to be inspected. The [errors article](/en-US/categories/golang/articles/errors) covers error wrapping and chain traversal in full.
+
+## Reading input with Scan
+
+The Scan family reads space-separated values from standard input and parses them into variables:
+
+```go
+var name string
+var age int
+
+fmt.Scan(&name, &age)
+fmt.Printf("name: %s, age: %d\n", name, age)
+
+```
+
+`fmt.Scan` reads as many space- or newline-delimited tokens as there are arguments. `fmt.Scanln` stops at a newline — it will not cross line boundaries to find additional arguments. `fmt.Scanf` parses according to a format string, similarly to `Printf`:
+
+```go
+var day, month, year int
+fmt.Scanf("%d/%d/%d", &day, &month, &year)
+
+```
+
+To scan from a string rather than stdin, use `fmt.Sscan`, `fmt.Sscanln`, or `fmt.Sscanf`:
+
+```go
+var x, y float64
+fmt.Sscan("3.14 2.71", &x, &y)
+fmt.Println(x, y) // 3.14 2.71
+
+```
+
+<Callout type="note" title="For line-by-line input, prefer bufio.Scanner">
+  `fmt.Scan` is convenient for small programs and exercises, but it handles
+  errors poorly and behaves unpredictably with mixed input. For any production
+  code that reads from stdin line by line, the [os and bufio
+  article](/en-US/categories/golang/articles/os-and-bufio) covers
+  `bufio.Scanner`, which is more robust and explicit.
+</Callout>
+
+The `fmt` package is not just a collection of print functions — it is a formatting engine built around interfaces. Once you understand the verb system, the width and precision flags, and how `Stringer` plugs your types into that engine, you have everything you need to produce clear, structured output in any context.

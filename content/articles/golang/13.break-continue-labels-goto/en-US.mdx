@@ -1,0 +1,226 @@
+---
+title: Break, continue, labels, and goto
+description: Learn how to control loop flow in Go with break and continue, how labels extend them to nested loops, and where goto fits — and when to avoid it.
+slug: break-continue-labels-goto
+publishedAt: '2026-04-13'
+keywords:
+  [
+    golang,
+    go break,
+    go continue,
+    go labels,
+    go goto,
+    go loop control,
+    go nested loops,
+    go flow control,
+  ]
+---
+
+## Controlling the flow inside loops
+
+Loops rarely run from start to finish without any intervention. Real programs need to exit early when a match is found, skip iterations that don't meet a condition, or break out of deeply nested loops in one move. Go provides four constructs for this: `break`, `continue`, `goto`, and labels.
+
+This article covers each one in depth — what they do, where they are genuinely useful, and where you should avoid them.
+
+## The break statement
+
+`break` terminates the innermost `for` loop immediately. Execution continues with whatever code follows the loop.
+
+```go
+for i := 0; i < 10; i++ {
+    if i == 5 {
+        break
+    }
+    fmt.Println(i)
+}
+// prints: 0 1 2 3 4
+```
+
+The loop would normally run ten times, but the moment `i` equals `5` the `break` fires and the loop exits. The `fmt.Println` on that iteration never executes, and neither do the remaining iterations.
+
+### Simulating a do-while loop
+
+Go has no `do-while` construct, but `break` lets you replicate the pattern. A `do-while` executes the body at least once and checks the condition at the bottom. Here is the idiomatic Go equivalent:
+
+```go
+for {
+    input := readInput()
+    if isValid(input) {
+        break
+    }
+    fmt.Println("Invalid input, try again.")
+}
+```
+
+The infinite `for` loop guarantees the body runs at least once. The condition is tested at the bottom using an `if` + `break`. This is a common pattern when reading user input or polling a resource.
+
+<Callout type="note" title="break and switch">
+  `break` also terminates a `switch` case early, though it is rarely needed — Go
+  cases do not fall through by default. It behaves the same way: it exits the
+  immediately enclosing `switch` block.
+</Callout>
+
+## The continue statement
+
+`continue` skips the rest of the current iteration and moves directly to the next one. The loop itself keeps running — only the current pass is cut short.
+
+```go
+for i := 0; i < 10; i++ {
+    if i%2 == 0 {
+        continue
+    }
+    fmt.Println(i)
+}
+// prints: 1 3 5 7 9
+```
+
+When `i` is even, `continue` jumps back to the loop header (`i++`, then the condition check). The `fmt.Println` is only reached for odd values.
+
+This is often cleaner than nesting the entire loop body inside an `if`. Compare:
+
+```go
+// with continue — flat structure
+for _, v := range values {
+    if v < 0 {
+        continue
+    }
+    process(v)
+}
+
+// without continue — nested structure
+for _, v := range values {
+    if v >= 0 {
+        process(v)
+    }
+}
+```
+
+Both are equivalent, but the `continue` version keeps the "happy path" code at the top level and makes the guard condition explicit at the start of the body. For long loop bodies, this reduces nesting and improves readability.
+
+## Labels
+
+By default, `break` and `continue` only affect the loop they are physically inside. When you have nested loops, this limitation becomes a problem: if you want to break out of the outer loop from inside the inner one, a plain `break` won't do it.
+
+Labels solve this. A label is an identifier followed by a colon, placed immediately before a `for` statement:
+
+```go
+outer:
+for i := 0; i < 3; i++ {
+    for j := 0; j < 3; j++ {
+        if i == 1 && j == 1 {
+            break outer
+        }
+        fmt.Printf("i=%d j=%d\n", i, j)
+    }
+}
+```
+
+Output:
+
+```
+i=0 j=0
+i=0 j=1
+i=0 j=2
+i=1 j=0
+```
+
+When `i == 1` and `j == 1`, `break outer` exits the loop labeled `outer` — not just the inner `for`. Without the label, `break` would only exit the inner loop, and the outer loop would continue from `i=1, j=2`.
+
+Labels work identically with `continue`:
+
+```go
+outer:
+for i := 0; i < 3; i++ {
+    for j := 0; j < 3; j++ {
+        if j == 1 {
+            continue outer
+        }
+        fmt.Printf("i=%d j=%d\n", i, j)
+    }
+}
+```
+
+Output:
+
+```
+i=0 j=0
+i=1 j=0
+i=2 j=0
+```
+
+`continue outer` skips the rest of the inner loop and advances the outer loop's iteration. For each value of `i`, only `j=0` is printed — as soon as `j` reaches `1`, the outer loop continues.
+
+<Callout type="note" title="Labels are rare in Go">
+  Using labels is perfectly valid, but it is uncommon in typical Go code. Most
+  loops have a flat or shallow structure where plain `break` and `continue` are
+  sufficient. When you find yourself reaching for labels, consider whether
+  extracting the inner loop into a function would make the code clearer.
+</Callout>
+
+## The goto statement
+
+`goto` transfers control unconditionally to a labeled statement elsewhere in the same function. Unlike `break` and `continue` — which only interact with loops — `goto` can jump to any labeled point in the function body.
+
+```go
+func main() {
+    i := 0
+loop:
+    if i < 5 {
+        fmt.Println(i)
+        i++
+        goto loop
+    }
+}
+```
+
+This prints `0` through `4`. The `goto loop` jumps back to the `loop:` label, re-evaluating the `if` condition on each pass. The effect is the same as a `for` loop, just written in a more roundabout way.
+
+### Restrictions on goto
+
+Go imposes two hard constraints on `goto` to prevent the most dangerous kinds of jumps:
+
+**1. You cannot jump over a variable declaration.**
+
+```go
+goto end
+x := 10    // error: goto end jumps over declaration of x
+end:
+fmt.Println(x)
+```
+
+If this were allowed, `x` would be in scope at `end:` but would never have been initialized, leading to use of an uninitialized variable.
+
+**2. You cannot jump into an inner or same-level block.**
+
+```go
+goto inside
+{
+inside: // error: goto inside jumps into block
+    fmt.Println("inside")
+}
+```
+
+Jumping into a block would bypass the initialization of any variables declared at the start of that block.
+
+### When goto is (rarely) appropriate
+
+In Go, `goto` sees almost no use in application code. The `for` loop, `break`, and `continue` cover every looping need. The primary legitimate use case appears in low-level or generated code where a flat structure with explicit jumps is more efficient or easier to produce than a structured loop.
+
+<Callout type="warning" title="Avoid goto in application code">
+  `goto` makes control flow difficult to trace. A reader must scan the entire
+  function to understand where each label is and what jumps lead there. Prefer
+  structured loops and early returns. If you feel the urge to use `goto`, the
+  function is likely doing too much and should be split.
+</Callout>
+
+## Summary
+
+| Statement        | Scope                      | Effect                               |
+| ---------------- | -------------------------- | ------------------------------------ |
+| `break`          | Innermost loop or `switch` | Exits it immediately                 |
+| `break label`    | Loop named by label        | Exits that specific loop             |
+| `continue`       | Innermost loop             | Skips to the next iteration          |
+| `continue label` | Loop named by label        | Skips to next iteration of that loop |
+| `goto label`     | Any label in same function | Jumps unconditionally to that label  |
+
+`break` and `continue` are everyday tools — use them freely to keep loop bodies flat and readable. Labels are valid but uncommon; reach for them when nested loops genuinely need cross-level control. `goto` is almost never the right choice in application code; if you find yourself writing it, step back and reconsider the structure of your function.

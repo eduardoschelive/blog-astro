@@ -1,0 +1,206 @@
+---
+title: Basic types
+description: Explore Go's built-in types — integers, floats, booleans, strings and more. Understand how Go's type system works and what each type costs in memory.
+slug: basic-types
+publishedAt: '2026-04-06'
+keywords:
+  [
+    golang,
+    go types,
+    go basic types,
+    go integers,
+    go float,
+    go boolean,
+    go string,
+    go byte,
+    go rune,
+    go type system,
+    statically typed,
+    strongly typed,
+    zero values,
+    utf-8,
+  ]
+---
+
+## Primitive vs composite types
+
+Since Go is a **statically and strongly typed** language, every variable and constant must have a type at compile time. The compiler will refuse to build your program if any value is left without a type — there are no implicit "any" types, no runtime surprises.
+
+Go organizes its types into two categories:
+
+**Primitive types** (also called basic types) are the foundation — a set of atomic building blocks that the language provides directly. You cannot break them down further.
+
+**Composite types** are built from primitive types. Arrays, slices, maps, structs, and channels are all composite. You will encounter them later in the series.
+
+This article covers the primitive types: booleans, numbers (integers, floats, complex), and strings.
+
+## Booleans
+
+The `bool` type has exactly two possible values: `true` and `false`. No other values exist.
+
+```go
+var isActive bool = true
+var isEmpty bool = false
+```
+
+Booleans are the result of comparison and logical operations, and the foundation of every conditional in Go. The zero value of `bool` is `false`.
+
+```go
+fmt.Println(10 > 5)   // true
+fmt.Println(3 == 4)   // false
+fmt.Println(!true)    // false
+```
+
+## Integers
+
+The `int` family stores whole numbers — positive, negative, and zero. No fractions, no decimals.
+
+Go offers several integer types, each occupying a different amount of memory and therefore capable of storing a different range of values. The first bit of a signed integer is reserved for the sign (positive or negative); the remaining bits store the magnitude.
+
+<TypeTable variant="int" />
+
+<Callout type="note" title="Which int should you use?">
+  In most cases, just use `int`. Go will make it 32 or 64 bits depending on the
+  platform, and it is the type expected by most standard library functions.
+  Reach for the sized variants (`int8`, `int16`, etc.) only when you have a
+  specific memory constraint or are working with binary protocols.
+</Callout>
+
+### Unsigned integers
+
+The `uint` family stores only non-negative numbers (zero and positive). Because there is no sign bit, all bits are available for the value — doubling the positive range compared to the equivalent signed type.
+
+<TypeTable variant="uint" />
+
+<Callout type="warning" title="Integer overflow">
+  If you assign a value that exceeds the type's maximum, Go will not
+  automatically promote to a larger type — the value wraps around, producing
+  incorrect results silently. A `uint8` holding 255, incremented by 1, becomes
+  0. Always choose a type whose range safely covers your data.
+</Callout>
+
+### byte and rune
+
+Two type aliases deserve special mention:
+
+- **`byte`** is an alias for `uint8`. It is used when treating data as raw bytes — reading files, network data, or any binary content.
+- **`rune`** is an alias for `int32`. It represents a single Unicode code point. When you work with characters and text beyond ASCII, rune is the right type.
+
+```go
+var b byte = 65       // same as uint8; 65 is the ASCII code for 'A'
+var r rune = '⚡'     // a single Unicode character
+fmt.Printf("%c\n", b) // A
+fmt.Printf("%c\n", r) // ⚡
+```
+
+## Floats
+
+Floating-point numbers have an integer part, a decimal point, and a fractional part. Unlike integers, they can represent fractions and very large or very small values.
+
+Go uses the **IEEE 754** standard, which is how virtually every modern language and CPU handles floating-point arithmetic.
+
+<TypeTable variant="float" />
+
+<Callout type="warning" title="Floats are not exact">
+Floating-point numbers sacrifice precision for range. `0.1 + 0.2` in Go does not equal exactly `0.3` due to how binary floating-point works. Never compare floats with `==`. Instead, check whether their difference falls within an acceptable tolerance (epsilon):
+
+```go
+const epsilon = 1e-9
+if math.Abs(a - b) < epsilon {
+    // a and b are close enough
+}
+```
+
+For financial or high-precision calculations, use integer arithmetic scaled by a factor, or a dedicated decimal library.
+
+</Callout>
+
+The zero value for both float types is `0.0`.
+
+## Complex numbers
+
+Go has built-in support for complex numbers — a real part and an imaginary part, both stored as floats.
+
+<TypeTable variant="complex" />
+
+You can create complex numbers using the built-in `complex()` function, and extract their parts with `real()` and `imag()`:
+
+```go
+c := complex(3.0, 4.0) // 3 + 4i
+fmt.Println(real(c))   // 3
+fmt.Println(imag(c))   // 4
+```
+
+<Callout type="note">
+  Go is not designed as a scientific computing language, but complex numbers are
+  there if you need them. For serious numerical work, the standard library's
+  `math/cmplx` package provides functions like `cmplx.Abs()`, `cmplx.Sqrt()`,
+  and more.
+</Callout>
+
+## Strings
+
+Strings store text — error messages, output, user input, configuration values. You define a string with double quotes for a single-line string or backticks for a raw (multi-line) string:
+
+```go
+greeting := "Hello, World!"
+
+query := `SELECT *
+FROM users
+WHERE active = true`
+```
+
+The zero value for `string` is the empty string `""`.
+
+Go has full **Unicode** support. You can store any character, symbol, or emoji in a string:
+
+```go
+s := "Hello, 世界 🌍"
+fmt.Println(s) // Hello, 世界 🌍
+```
+
+### Behind the scenes
+
+Understanding how Go stores strings prevents a common class of bugs.
+
+A string in Go is internally a **read-only slice of bytes**. The bytes are encoded in **UTF-8**, which means each character (more precisely, each Unicode code point) can occupy between 1 and 4 bytes. ASCII characters take exactly 1 byte; characters outside ASCII take 2 to 4.
+
+```go
+s := "Hi 🌍"
+fmt.Println(len(s)) // 7, not 4 — len() counts bytes, not characters
+```
+
+This means iterating with a plain index gives you bytes, not characters:
+
+```go
+for i := 0; i < len(s); i++ {
+    fmt.Println(s[i]) // prints raw byte values
+}
+```
+
+To iterate over characters correctly, use a `for range` loop, which automatically decodes each UTF-8 rune:
+
+```go
+for i, r := range s {
+    fmt.Printf("index %d: %c\n", i, r)
+}
+```
+
+Strings are also **immutable** — you cannot modify a character in place. You can reassign the variable to a new string, but you cannot change the bytes of an existing one:
+
+```go
+s := "hello"
+s[0] = 'H' // compile error: cannot assign to s[0]
+s = "Hello" // this is fine — reassigning the variable
+```
+
+### bytes vs runes
+
+```go
+s := "café"
+
+fmt.Println(len(s))             // 5 bytes (é takes 2 bytes in UTF-8)
+fmt.Println(len([]rune(s)))     // 4 characters
+```
+
+When you need to work with individual characters — counting them, slicing by character position, or comparing them — convert the string to `[]rune` first. When you need to work with raw bytes — encoding, hashing, network I/O — use `[]byte`.

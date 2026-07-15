@@ -1,0 +1,121 @@
+---
+title: Introdução à estruturas de dados
+description: Entenda como estruturas de dados transformam bytes aleatórios em padrões significativos. Explore memória contígua vs espalhada, estruturas lineares vs não-lineares, e os tradeoffs que moldam o desempenho do seu código.
+slug: introducao-estruturas-de-dados
+publishedAt: '2025-12-30'
+keywords:
+  [
+    estruturas de dados,
+    fundamentos,
+    memória contígua,
+    memória espalhada,
+    arrays,
+    linked lists,
+    complexidade,
+    tipos abstratos de dados,
+    ADT,
+    organização de memória,
+  ]
+---
+
+## TADs vs Estruturas de dados
+
+É importante entender dois conceitos fundamentais que muitas vezes se confundem:
+
+### Tipos abstratos de dados (<Tooltip title="Sigla em inglês" content="Abstract Data Types - Tipos Abstratos de Dados">TADs</Tooltip>)
+
+Definem **o quê** você pode fazer - quais operações existem e seu comportamento esperado. É o contrato da interface, a especificação abstrata. Um TAD diz "você pode empilhar e desempilhar", mas não diz como isso funciona por baixo dos panos.
+
+### Estruturas de dados
+
+Definem **como** fazer - a implementação concreta na memória. É a realização prática do conceito. Uma estrutura de dados mostra exatamente como os bytes são organizados e manipulados.
+
+<Example title="Exemplo prático">
+
+Uma "stack" (pilha) é um TAD que define comportamento <Tooltip title="Padrão de acesso" content="Last In, First Out - o último que entra é o primeiro que sai">LIFO</Tooltip>. Você pode implementá-la usando arrays ou linked lists - estruturas de dados diferentes, mesmo comportamento abstrato. A escolha da estrutura afeta performance, mas o TAD permanece o mesmo.
+
+</Example>
+
+## Organização lógica dos dados
+
+A forma como os elementos se relacionam entre si define o tipo da estrutura:
+
+### Estruturas lineares
+
+Estabelecem uma ordem sequencial clara - existe um primeiro elemento, um último, e todos os intermediários possuem exatamente um elemento anterior e um próximo. É como uma fila de pessoas: você sabe quem está à sua frente e quem está atrás.
+
+<Example title="Exemplos de estruturas lineares">
+
+**Arrays, linked lists, stacks e queues** são exemplos clássicos. Em uma stack (pilha), você empilha pratos um sobre o outro - só acessa o do topo. Em uma queue (fila), é como uma fila de banco - quem chega primeiro é atendido primeiro. O que importa é a ordem entre elementos, não como estão organizados na memória.
+
+</Example>
+
+### Estruturas não-lineares
+
+Quebram essa ordem única. Aqui, um elemento pode se conectar a vários outros simultaneamente, formando hierarquias ou redes complexas. Como uma árvore genealógica ou rede social.
+
+<Example title="Exemplos de estruturas não-lineares">
+
+**Trees (árvores)** organizam dados hierarquicamente - como pastas e arquivos no seu computador. **Graphs (grafos)** representam redes arbitrárias - como rotas entre cidades ou conexões em redes sociais. **Hash tables** usam funções matemáticas para espalhar dados e acessá-los instantaneamente, como um índice de livro turbinado.
+
+</Example>
+
+## Perspectiva de memória
+
+Além da organização lógica, existe a questão física: como os bytes são dispostos na memória RAM?
+
+### Memória contígua
+
+Elementos armazenados um do lado do outro na memória. Como uma rua com casas numeradas sequencialmente.
+
+<MemoryVisualization
+  title="Memória RAM:"
+  type="contiguous"
+  blocks={[
+    { address: '0x1000', value: 42, label: 'índice 0' },
+    { address: '0x1004', value: 17, label: 'índice 1' },
+    { address: '0x1008', value: 93, label: 'índice 2' },
+    { address: '0x100C', value: 28, label: 'índice 3' },
+  ]}
+>
+  <span className="text-danger">Array:</span>{' '}
+  <span className="text-warning">[</span>
+  <span className="text-success">42, 17, 93, 28</span>
+  <span className="text-warning">]</span>
+</MemoryVisualization>
+
+Arrays funcionam assim. Cada elemento ocupa 4 bytes, então o elemento `array[2]` está matematicamente em `endereço_base + (2 × 4)`. Acesso instantâneo <Tooltip title="Notação Big O" content="Complexidade de tempo constante - sempre demora o mesmo tempo">O(1)</Tooltip>! Mas inserir no meio? Precisa deslocar todos os elementos seguintes - imagine reorganizar uma estante de livros inteira porque você quer inserir um no meio.
+
+### Memória não-contígua
+
+Elementos espalhados em diferentes regiões da memória, conectados por ponteiros. Como uma caça ao tesouro onde cada pista aponta para a próxima.
+
+<MemoryVisualization
+  title="Memória RAM (espalhada):"
+  type="linked"
+  blocks={[
+    { address: '0x1000', value: 'dados: 10', nextAddress: '0x5FA0' },
+    { address: '0x5FA0', value: 'dados: 20', nextAddress: '0x2C10' },
+    { address: '0x2C10', value: 'dados: 30', nextAddress: 'NULL' },
+  ]}
+>
+  <span className="text-danger">Linked List:</span>{' '}
+  <span className="text-success">10</span>{' '}
+  <span className="text-primary">→</span>{' '}
+  <span className="text-success">20</span>{' '}
+  <span className="text-primary">→</span>{' '}
+  <span className="text-success">30</span>
+</MemoryVisualization>
+
+Linked lists funcionam assim. Cada nó carrega seu dado e um ponteiro para o próximo. Inserir no meio? Fácil - apenas redirecione dois ponteiros. Mas acessar o elemento 100? Precisa seguir 100 pistas sequencialmente - <Tooltip title="Notação Big O" content="Complexidade linear - o tempo cresce proporcionalmente ao número de elementos">O(n)</Tooltip>.
+
+## O que as torna diferentes
+
+Cada estrutura de dados faz tradeoffs:
+
+- **Organização na memória** - Contígua (arrays) vs espalhada (linked lists)
+- **Como você acessa** - Acesso direto vs percorrer um por um
+- **Velocidade das operações** - Inserções rápidas mas buscas lentas, ou vice-versa
+- **Espaço extra usado** - Pouca informação adicional vs muitos ponteiros
+
+A escolha certa depende do seu caso de uso específico. Precisa de buscas rápidas? Hash tables. Manter ordem? Binary search trees. Comportamento LIFO? Stacks.

@@ -1,0 +1,133 @@
+---
+title: Code blocks and scope
+description: Understand how Go organizes code into nested blocks and how variable scope flows through them. Learn the block hierarchy, scope rules, and how shadowing works — and why it should be avoided.
+slug: code-blocks-and-scope
+publishedAt: '2026-04-09'
+keywords:
+  [
+    golang,
+    go code blocks,
+    go scope,
+    go variable scope,
+    go shadowing,
+    go block scope,
+    go inner block,
+    go outer block,
+  ]
+---
+
+## What is a block
+
+A block is a sequence of declarations and statements enclosed in curly braces `{ }`. Every time you write `{`, you open a new block. Every `}` closes it. Code inside a block is grouped together and, more importantly, variables declared inside a block live only within that block.
+
+Go has a hierarchy of blocks that nest inside each other:
+
+- **Universe block** — the outermost block. Built-in identifiers like `len`, `cap`, `make`, `true`, `false`, and all predeclared types live here.
+- **Package block** — every file in a package shares this block. Package-level variables, functions, and types are declared here.
+- **File block** — import declarations belong here, scoped to the individual file.
+- **Function block** — the body of each function is its own block.
+- **Statement blocks** — `if`, `for`, `switch`, and `select` bodies each open a new block.
+- **Explicit blocks** — you can open a block anywhere inside a function using bare `{ }`.
+
+## Scope rules
+
+The fundamental rule is: **a variable declared in an outer block is accessible in all inner blocks, but a variable declared in an inner block is not accessible in any outer block**.
+
+```go
+func main() {
+    x := 10 // declared in function block
+
+    if x > 5 {
+        y := 20 // declared in if block
+        fmt.Println(x, y) // x is accessible here
+    }
+
+    fmt.Println(x) // fine
+    fmt.Println(y) // compile error: undefined: y
+}
+
+```
+
+`x` is declared in the function block, so it is visible inside the `if` block. `y` is declared inside the `if` block, so it only exists there — once the block ends, `y` is gone.
+
+## Explicit blocks
+
+You can create a new block anywhere inside a function with bare curly braces. This is useful when you want to limit the lifetime of a temporary variable to a specific section of code:
+
+```go
+func process() {
+    result := compute()
+
+    {
+        temp := result * 2
+        fmt.Println(temp)
+    } // temp is gone here
+
+    fmt.Println(result) // still accessible
+}
+
+```
+
+Explicit blocks are not common in everyday Go code, but they are useful in tests and in code that needs to reuse a short variable name for unrelated purposes in different sections of the same function.
+
+## Shadowing
+
+Shadowing occurs when you declare a variable in an inner block with the same name as a variable in an outer block. The inner variable **shadows** the outer one — within that inner block, the name refers to the inner variable, and the outer variable becomes inaccessible:
+
+```go
+x := 10
+fmt.Println(x) // 10
+
+{
+    x := 99 // new variable, shadows the outer x
+    fmt.Println(x) // 99
+}
+
+fmt.Println(x) // 10 — outer x is unchanged
+```
+
+The outer `x` still holds `10` after the block closes — it was never modified, just hidden. Two separate variables happened to have the same name.
+
+### Shadowing with :=
+
+The most common source of accidental shadowing in Go is the `:=` short declaration operator inside `if`, `for`, or `switch` blocks. Because `:=` always declares a new variable in the current block, it can silently shadow an outer variable when you intended to assign to it:
+
+```go
+err := doFirst()
+if err != nil {
+    return err
+}
+
+if result, err := doSecond(); err != nil { // err is a new variable here
+    fmt.Println(err) // this err — the one from doSecond
+    return err
+}
+
+fmt.Println(err) // this err — still from doFirst, unchanged
+
+```
+
+The `err` inside the `if` is a brand-new variable scoped to that block, not the same `err` declared above. This is a frequent source of bugs where developers believe they are checking or returning the outer `err` but are actually working with a different one.
+
+<Callout type="warning" title="Shadowing is not a compile error">
+  Go does not warn about shadowing by default. The compiler sees no problem with
+  two variables of the same name in different scopes. The `go vet` tool and
+  linters like `staticcheck` can detect it, but it will not stop your code from
+  compiling and running — just incorrectly.
+</Callout>
+
+### Why to avoid it
+
+Shadowing is legal Go, but it reduces clarity. A reader scanning the code who sees a variable name used both before and after a block may not notice that they are actually two separate variables. The outer variable's value remains unchanged in a way that is not obvious at a glance.
+
+The rule of thumb: if you intend to modify an outer variable from inside a block, use `=` (assignment), not `:=` (declaration). Reserve `:=` for genuinely new variables.
+
+```go
+// Intended: update the outer err
+err := doFirst()
+if ok := check(); ok {
+    err = doSecond() // assignment — modifies the outer err
+}
+fmt.Println(err)
+
+```

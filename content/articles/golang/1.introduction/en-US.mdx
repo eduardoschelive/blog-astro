@@ -1,0 +1,128 @@
+---
+title: Introduction to Go
+description: Discover the origins of Go — why Google built it, who designed it, and the core principles that make it fast, simple, and built for the modern era of software.
+slug: introduction
+publishedAt: '2026-04-06'
+updatedAt: '2026-04-27'
+keywords:
+  [
+    golang,
+    go introduction,
+    go history,
+    robert griesemer,
+    rob pike,
+    ken thompson,
+    go language design,
+    csp,
+    communicating sequential processes,
+    statically typed,
+    compiled language,
+    garbage collection,
+  ]
+---
+
+## The problem Go was built to solve
+
+In the late 2000s, Google's engineers were dealing with a common but painful reality: massive codebases written in C++ that took tens of minutes to compile, a language so complex that even experienced engineers disagreed on how to write it well, and tools that struggled to keep up.
+
+Three engineers — **Robert Griesemer**, **Rob Pike**, and **Ken Thompson** — sat down in 2007 and started sketching ideas for a new language. Their collective résumé is remarkable: Pike and Thompson had worked together at Bell Labs on Unix and Plan 9. Thompson co-created the C language and co-authored the first Unix. Griesemer had worked on the V8 JavaScript engine and the Sawzall language at Google. These weren't people guessing at what a good systems language looked like.
+
+<Example title="The legend of Go's creation">
+
+The story goes that Go was conceived while waiting for a C++ build to finish. That might sound like a joke, but it reflects a real frustration: slow compilation was a genuine productivity tax. One of Go's earliest design goals was that a large program should build in seconds, not minutes.
+
+</Example>
+
+Go 1.0 was officially released in March 2012, and it has maintained backwards compatibility ever since — code you write today will still compile on future versions of Go.
+
+## What Go is
+
+Go is a **statically typed**, **compiled**, **garbage-collected** language. Each of those words carries weight.
+
+**Statically typed** means the type of every variable is known at compile time, not at runtime. The compiler catches type errors before your program ever runs. This is the same model used by C, C++, and Java — as opposed to Python or JavaScript, where types are checked at runtime.
+
+**Compiled** means your Go source code is translated directly into machine code that runs on the processor. There is no virtual machine, no interpreter, no bytecode layer. The result is a single native binary that runs fast and has a minimal startup time.
+
+**Garbage collected** means you do not manage memory manually. You do not call `malloc` and `free`. Go's runtime tracks which objects are still in use and automatically reclaims memory that is no longer reachable. This eliminates entire categories of bugs — buffer overflows, use-after-free, double-free — that plague C and C++ programs.
+
+**Concurrent by design** means the language has first-class primitives for running work concurrently. Goroutines are lightweight functions that start with `go` and cost only a few kilobytes of stack — you can run thousands of them in a single process. Channels are typed conduits through which goroutines communicate, replacing shared memory and locks with message passing. This model is rooted in Tony Hoare's **Communicating Sequential Processes** (CSP), a formal framework for concurrent programs. You will explore goroutines and channels in depth later in this series.
+
+<Example title="The best of both worlds">
+
+Go occupies an unusual position: it gives you the performance of a compiled language and the safety of a managed runtime. C++ is fast but demands manual memory management. Python is safe but slow and interpreted. Go was designed to be both fast and safe without making you choose.
+
+</Example>
+
+## Standing on the shoulders of giants
+
+Go did not emerge from nothing. Its designers deliberately drew from several sources.
+
+### From C
+
+Go's syntax is clearly C-inspired. Curly braces, `for` loops, pointers, functions, structs — the visual vocabulary will feel familiar to anyone who has written C. But Go removes the parts of C that cause the most trouble: no pointer arithmetic, no header files, no undefined behavior from uninitialized memory.
+
+### From CSP
+
+The most distinctive part of Go's concurrency model comes from a 1978 academic paper: **Communicating Sequential Processes** (CSP) by Tony Hoare. The core idea is that independent processes communicate by passing messages through channels, rather than sharing memory and using locks.
+
+Go made this practical. Goroutines are lightweight functions that run concurrently, and channels are typed conduits through which they communicate. You will explore both in depth later in this series.
+
+```go
+go doSomething()         // launch a goroutine
+result := <-myChannel    // receive from a channel
+```
+
+### From other influences
+
+The package system and module model draw from languages like Oberon and Modula. The interface system — structural typing without explicit declaration — has roots in duck typing traditions. Go's designers picked the pieces that worked and discarded what did not.
+
+## The core design philosophy
+
+If Go had a motto, it might be: **do less, but do it well**.
+
+- **Few keywords**: Go has 25 reserved keywords. C has 32. C++ has over 80. Fewer keywords means less to memorize and more consistent codebases.
+- **One way to do things**: Go deliberately avoids providing multiple ways to express the same idea. This makes code written by different people look similar, which matters at scale.
+- **Fast compilation**: A large Go program compiles in seconds. This changes how you work — you iterate faster, you catch errors faster.
+- **Explicit over implicit**: Go avoids magic. What the code does is what it says. There are no hidden constructors, no operator overloading, no implicit conversions.
+
+## Your first Go program
+
+Every Go program starts with a package declaration. The `main` package is special — it defines an executable program. The `main` function inside it is the entry point.
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+    fmt.Println("Hello, World!")
+}
+```
+
+Breaking this down:
+
+- `package main` — declares that this file belongs to the `main` package
+- `import "fmt"` — imports the standard library package for formatted I/O
+- `func main()` — the function Go calls when the program starts
+- `fmt.Println` — prints a line to standard output
+
+To run it:
+
+```bash
+go run main.go
+```
+
+To compile it into a standalone binary:
+
+```bash
+go build main.go
+./main
+```
+
+`go run` compiles and runs in one step — useful during development. `go build` produces a binary you can distribute and deploy without any Go toolchain installed on the target machine.
+
+## What comes next
+
+This series covers Go from the ground up. The next articles explore the building blocks that make up every Go program: the types that store your data, the variables that name them, the operators that transform them, and the control structures that decide what happens when.
+
+Go rewards patience with the fundamentals. The language is small, but it is precise — and understanding it well makes everything that follows, including concurrency, interfaces, and the standard library, much easier to reason about.

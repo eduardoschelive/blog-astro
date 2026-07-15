@@ -1,0 +1,306 @@
+---
+title: Project structure
+description: Aprenda como estruturar projetos Go desde uma biblioteca de arquivo único até aplicações multi-package com internal packages, múltiplos executáveis e workspace mode.
+slug: estrutura-de-projetos
+publishedAt: '2026-04-27'
+keywords:
+  - golang
+  - project structure
+  - go modules
+  - internal packages
+  - cmd pattern
+  - package layout
+  - go work
+  - workspace mode
+  - go workspace
+---
+
+Go impõe pouquíssimos requisitos sobre como você organiza os arquivos. A spec da linguagem não diz nada sobre profundidade de diretórios, convenções de naming para diretórios que não são packages, ou quantos packages pertencem a um repositório. Essa liberdade é deliberada — mas também significa que a estrutura é uma decisão que você toma, não o compilador. Os padrões que emergiram da comunidade Go são pragmáticos: refletem o que o toolchain realmente recompensa, não ideais arquiteturais abstratos. Entendê-los ajuda a começar projetos em uma forma que cresce bem.
+
+## Simple package
+
+O projeto Go mais simples possível é um único package sem sub-diretórios: um `go.mod` na raiz, arquivos-fonte ao lado dele e testes próximos ao código que testam.
+
+```
+slugify/
+├── go.mod
+├── go.sum
+├── slugify.go
+└── slugify_test.go
+
+```
+
+```go
+module github.com/eduardoschelive/slugify
+
+go 1.24
+
+```
+
+O nome do diretório é `slugify`, a declaração de package em cada arquivo é `package slugify`, e o module path é `github.com/eduardoschelive/slugify`. Os três coincidem — essa previsibilidade é a regra, não a exceção.
+
+Esse layout funciona para qualquer biblioteca focada. Os testes ficam em `slugify_test.go` ao lado do código. Quem usa o package importa com `github.com/eduardoschelive/slugify` e chama as funções exportadas diretamente. Não há nada a navegar, nada a descobrir — você abre o diretório e tudo está lá.
+
+## Multi-file simple package
+
+Quando um package cresce, você o divide em múltiplos arquivos sem adicionar diretórios. Cada arquivo ainda declara o mesmo nome de package. O compilador trata todos os arquivos no mesmo diretório como uma única unidade de compilação.
+
+```
+currency/
+├── go.mod
+├── go.sum
+├── currency.go
+├── currency_test.go
+├── format.go
+└── format_test.go
+
+```
+
+```go
+module github.com/eduardoschelive/currency
+
+go 1.24
+
+```
+
+`currency.go` pode definir o type `Currency` central e operações aritméticas. `format.go` adiciona lógica de formatação — representação textual com suporte a locale. Ambos os arquivos declaram `package currency`. De fora, ainda é um único package: quem importa usa `github.com/eduardoschelive/currency` e vê todos os identifiers exportados de ambos os arquivos sem nenhuma indicação da divisão.
+
+Dividir por responsabilidade dentro de um package é uma escolha de manutenção, não um limite de design. Mantém os arquivos focados sem impor o overhead de um novo package, import path ou superfície de API pública.
+
+<Callout
+  type="note"
+  title="Arquivos no mesmo diretório formam um único package"
+>
+  Todos os arquivos `.go` em um diretório são compilados juntos. Dividir em
+  múltiplos arquivos não cria múltiplos packages — organiza o código-fonte de um
+  único package. O limite do package é sempre o limite do diretório.
+</Callout>
+
+## Simple executable
+
+Quando você precisa de um programa executável em vez de uma biblioteca importável, o package raiz é `main` e um arquivo define a função `main()`.
+
+```
+counter/
+├── go.mod
+├── go.sum
+├── main.go
+├── counter.go
+└── counter_test.go
+
+```
+
+```go
+module github.com/eduardoschelive/counter
+
+go 1.24
+
+```
+
+`main.go` é o ponto de entrada — faz parsing de flags, conecta dependências e chama o restante do package. `counter.go` contém a lógica real de contagem de linhas. Ambos os arquivos declaram `package main`.
+
+Manter a lógica fora de `main.go` e em arquivos nomeados a torna testável. Você não pode chamar `main()` a partir de um teste, mas pode chamar `Count()` ou qualquer outra função exportada de `counter.go`. Essa separação é a estrutura mínima que uma ferramenta CLI precisa para permanecer testável sem adicionar complexidade de packages.
+
+## Multi-package project
+
+Quando um projeto oferece múltiplas capacidades relacionadas mas distintas, você divide em sub-packages. Cada sub-diretório é um [package](/pt-BR/categorias/golang/artigos/pacotes) independente com seu próprio import path.
+
+```
+notify/
+├── go.mod
+├── go.sum
+├── notify.go
+├── notify_test.go
+├── email/
+│   ├── email.go
+│   └── email_test.go
+└── sms/
+    ├── sms.go
+    └── sms_test.go
+
+```
+
+```go
+module github.com/eduardoschelive/notify
+
+go 1.24
+
+```
+
+O package raiz `notify` define um type `Notification` compartilhado e uma interface comum. `email` e `sms` são implementações concretas — cada uma tem sua própria declaração de package, import path e superfície exportada:
+
+```go
+import (
+    "github.com/eduardoschelive/notify"
+    "github.com/eduardoschelive/notify/email"
+    "github.com/eduardoschelive/notify/sms"
+)
+
+```
+
+Sub-packages são unidades de compilação independentes. Eles importam do package raiz livremente, mas o package raiz não pode importar de seus sub-packages sem criar um ciclo de dependências. Projete a hierarquia de packages de forma que as dependências fluam da raiz em direção às folhas, não na direção contrária.
+
+## Internal packages
+
+Go aplica uma restrição de acesso que vai além da distinção exportado/não exportado: o diretório `internal/`. Um package cujo path contém `internal` só pode ser importado por código que esteja enraizado no pai de `internal`.
+
+```
+gateway/
+├── go.mod
+├── go.sum
+├── gateway.go
+├── gateway_test.go
+└── internal/
+    ├── auth/
+    │   ├── auth.go
+    │   └── auth_test.go
+    ├── client/
+    │   ├── client.go
+    │   └── client_test.go
+    └── retry/
+        ├── retry.go
+        └── retry_test.go
+
+```
+
+```go
+module github.com/eduardoschelive/gateway
+
+go 1.24
+
+```
+
+`internal/auth`, `internal/client` e `internal/retry` são packages completos com seus próprios import paths, mas são invisíveis para qualquer código fora do module `gateway`. Outro module que dependa de `github.com/eduardoschelive/gateway` não pode importar `github.com/eduardoschelive/gateway/internal/auth` — o compilador rejeita.
+
+<Callout
+  type="warning"
+  title="internal/ é imposto pelo compilador, não uma convenção"
+>
+  A restrição não é apenas orientativa. Se código fora do pai permitido tentar
+  importar um package `internal`, o build falha com um erro. Isso torna
+  `internal/` o lugar certo para detalhes de implementação que não devem se
+  tornar parte da API pública — mesmo que alguém quisesse importá-los, não
+  conseguiria.
+</Callout>
+
+Esse layout é comum em bibliotecas e serviços que precisam de packages auxiliares para sua própria implementação mas não querem expor esses auxiliares a quem os consome. Permite refatorar `internal/` livremente sem se preocupar em quebrar quem está usando, já que não existem usos legais externos.
+
+## Multiple executables
+
+Quando um projeto distribui mais de um binário — um servidor e uma ferramenta de migration, uma API e um worker — o layout padrão usa um diretório `cmd/` com um sub-diretório por binário.
+
+```
+platform/
+├── go.mod
+├── go.sum
+├── cmd/
+│   ├── api/
+│   │   └── main.go
+│   └── worker/
+│       └── main.go
+├── internal/
+│   ├── handler/
+│   │   ├── handler.go
+│   │   └── handler_test.go
+│   └── queue/
+│       ├── queue.go
+│       └── queue_test.go
+└── store/
+    ├── store.go
+    └── store_test.go
+
+```
+
+```go
+module github.com/eduardoschelive/platform
+
+go 1.24
+
+```
+
+Cada diretório dentro de `cmd/` declara `package main` e contém um único `main.go`. Eles são buildados de forma independente:
+
+```bash
+go build ./cmd/api
+go build ./cmd/worker
+
+```
+
+A lógica compartilhada fica em `internal/` e `store/`. Ambos os binários importam desses packages. Nenhum binário importa do outro. O código compartilhado é testável de forma isolada; os binários são shells finos que conectam tudo.
+
+Esse padrão escala bem. Adicionar um terceiro binário significa adicionar `cmd/migrate/main.go` — sem alterações nos packages existentes, sem novas preocupações de gerenciamento de dependências.
+
+## Workspace mode
+
+Quando você desenvolve dois modules relacionados em paralelo — uma biblioteca compartilhada e uma aplicação que a importa — normalmente precisaria publicar a biblioteca e atualizar sua versão no `go.mod` da aplicação a cada mudança. Durante o desenvolvimento ativo, esse ciclo é impraticável.
+
+Go 1.18 introduziu **workspaces** para resolver isso. Um workspace é um arquivo `go.work` na raiz do seu working tree que instrui o toolchain a usar diretórios locais no lugar de versões baixadas dos modules.
+
+**Cenário:** você tem uma biblioteca compartilhada e uma aplicação em diretórios irmãos:
+
+```
+work/
+├── mylib/
+│   ├── go.mod    (module github.com/org/mylib)
+│   └── mylib.go
+└── myapp/
+    ├── go.mod    (module github.com/org/myapp, requires github.com/org/mylib)
+    └── main.go
+
+```
+
+Inicialize um workspace a partir do diretório `work/`:
+
+```bash
+go work init ./mylib ./myapp
+
+```
+
+Isso cria o `go.work`:
+
+```
+go 1.24
+
+use (
+    ./mylib
+    ./myapp
+)
+
+```
+
+Agora todo comando `go` executado de qualquer lugar dentro de `work/` resolve `github.com/org/mylib` para o diretório local `./mylib`, ignorando qualquer versão listada no `myapp/go.mod`. Mudanças na biblioteca ficam imediatamente visíveis na aplicação sem publicar nem substituir entradas de `require`.
+
+Para adicionar mais modules a um workspace existente:
+
+```bash
+go work use ./anotherpkg
+
+```
+
+<Callout
+  type="warning"
+  title="go.work é para desenvolvimento, não para distribuição"
+>
+  Não faça commit do `go.work` em repositórios consumidos como bibliotecas — ele
+  redirecionaria os consumidores para seus paths locais. Adicione-o ao
+  `.gitignore` nesses casos. Para aplicações (sem consumidores externos), fazer
+  commit do `go.work` é válido se o time compartilha o mesmo layout de
+  diretórios.
+</Callout>
+
+## Escolhendo um layout
+
+| Tipo de projeto                          | Layout                            |
+| ---------------------------------------- | --------------------------------- |
+| Biblioteca de propósito único            | Package raiz flat                 |
+| Biblioteca em crescimento                | Múltiplos arquivos, mesmo package |
+| CLI ou ferramenta única                  | `package main` na raiz            |
+| Biblioteca com sub-capacidades           | Sub-packages na raiz              |
+| Biblioteca com helpers privados          | `internal/` na raiz               |
+| Múltiplos binários compartilhando código | `cmd/` + `internal/`              |
+
+Comece com o layout mais simples que atenda à necessidade. Uma biblioteca com três arquivos-fonte não precisa de `internal/`. Uma CLI com um único binário não precisa de `cmd/`. Adicione estrutura quando um problema concreto exigir — um limite de package que não deve ser cruzado, um segundo binário, um type compartilhado que múltiplos packages precisam. Estrutura prematura adiciona overhead de navegação sem adicionar clareza.
+
+Esses padrões são convenções da comunidade, não requisitos da linguagem. Projetos reais divergem deles constantemente. Você vai encontrar repositórios com um diretório `pkg/` na raiz, monorepos com dezenas de modules, projetos que usam `cmd/` para um único binário, ou codebases legadas moldadas por convenções anteriores ao Go modules. Nada disso está errado — reflete decisões tomadas em um contexto específico. O que importa é entender _por que_ um padrão existe para que você consiga avaliar qualquer estrutura que encontrar, não apenas reconhecer se ela corresponde a um template.
+
+O sistema de modules do Go, descrito no artigo de [gerenciamento de dependências](/pt-BR/categorias/golang/artigos/gerenciamento-de-dependencias), funciona da mesma forma independentemente do layout escolhido. O `go.mod` na raiz do repositório é sempre a única fonte de verdade para a identidade do module e suas dependências.

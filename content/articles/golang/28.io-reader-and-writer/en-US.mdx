@@ -1,0 +1,246 @@
+---
+title: io.Reader and io.Writer
+description: Learn how Go's io.Reader and io.Writer interfaces unify I/O across files, HTTP, buffers, and more — and how to implement them yourself.
+slug: io-reader-and-writer
+publishedAt: '2026-04-28'
+keywords:
+  - golang
+  - io.Reader
+  - io.Writer
+  - io.Copy
+  - io.ReadAll
+  - bufio
+  - os.File
+  - bytes.Buffer
+  - standard library
+---
+
+I/O is at the core of nearly every useful program. Whether you are reading a configuration file, responding to an HTTP request, or processing a stream of sensor data, you are dealing with a flow of bytes moving from one place to another. Go's `io` package defines two [interfaces](/en-US/categories/golang/articles/interfaces) — `io.Reader` and `io.Writer` — that represent this flow in its most fundamental form. Their simplicity is what makes them powerful: once you understand their contract, you can work with files, network connections, in-memory buffers, compressed streams, and test fakes all through the same API.
+
+## The io.Reader interface
+
+`io.Reader` is defined with a single method:
+
+```go
+type Reader interface {
+    Read(p []byte) (n int, err error)
+}
+
+```
+
+`Read` reads up to `len(p)` bytes from the underlying data source and places them into `p`. It returns the number of bytes actually read (`n`) and any error that occurred.
+
+The contract has one rule that surprises many Go newcomers: **always process the `n` bytes returned before inspecting the error**. This matters because `Read` is allowed to return a non-zero `n` alongside a non-nil error. A real-world read might deliver a few valid bytes and then signal that the stream is exhausted — both pieces of information arrive in a single call. If you check the error first and stop, you silently discard the bytes that were successfully read.
+
+The special sentinel error `io.EOF` signals that the source is exhausted. It is not a failure — it simply means there is nothing more to read. Any valid content that arrived in the same call as `io.EOF` should still be processed.
+
+<Callout type="warning" title="Check n before err">
+  A common mistake is to check `err != nil` before processing `buf[:n]`. If a
+  call returns `n=10, err=io.EOF`, those ten bytes are real content. Inspecting
+  the error first causes you to lose them. Always process `buf[:n]`, then decide
+  what to do with the error.
+</Callout>
+
+## Reading in a loop
+
+Most real-world reads require multiple calls to `Read`, because the source is larger than the buffer or the underlying transport delivers data in chunks. The correct pattern is:
+
+```go
+buf := make([]byte, 4096)
+for {
+    n, err := r.Read(buf)
+    process(buf[:n]) // always process n bytes first
+    if err == io.EOF {
+        break
+    }
+    if err != nil {
+        log.Fatal(err)
+    }
+}
+
+```
+
+The loop processes `buf[:n]` on every iteration — including the one where `io.EOF` arrives — and only exits when the source is fully consumed or an unexpected error occurs.
+
+For cases where you want all content in memory at once, `io.ReadAll` handles the loop for you:
+
+```go
+data, err := io.ReadAll(r)
+if err != nil {
+    log.Fatal(err)
+}
+
+```
+
+`io.ReadAll` is convenient for small or bounded sources. Avoid it for streams of unknown or potentially large size, where holding all bytes in memory at once could be a problem.
+
+## Common io.Reader implementations
+
+Because `io.Reader` requires only a single method, the standard library is full of types that satisfy it. Several appear in almost every Go program.
+
+**`os.File`** is the most common starting point. Opening a file returns a `*os.File` that implements `io.Reader`, letting you pass it directly to any function expecting a reader:
+
+```go
+f, err := os.Open("data.txt")
+if err != nil {
+    log.Fatal(err)
+}
+defer f.Close()
+
+data, err := io.ReadAll(f)
+
+```
+
+**`strings.NewReader`** creates a reader from a string. It is especially useful in tests, where you want to supply known input to a function that expects an `io.Reader` without creating a temporary file:
+
+```go
+r := strings.NewReader("hello, world")
+data, _ := io.ReadAll(r)
+fmt.Println(string(data)) // hello, world
+
+```
+
+**`bufio.NewReader`** wraps any `io.Reader` and adds an internal buffer, reducing system calls when reading byte-by-byte or line-by-line:
+
+```go
+br := bufio.NewReader(f)
+line, err := br.ReadString('\n')
+
+```
+
+**`http.Request.Body`** is an `io.Reader` that delivers the raw bytes of an incoming HTTP request body. This means any code that reads from an `io.Reader` can process HTTP bodies without knowing anything about HTTP:
+
+```go
+func handler(w http.ResponseWriter, r *http.Request) {
+    body, err := io.ReadAll(r.Body)
+    if err != nil {
+        http.Error(w, "bad request", http.StatusBadRequest)
+        return
+    }
+    // use body
+}
+
+```
+
+**`bytes.Buffer`** is an in-memory byte buffer that satisfies both `io.Reader` and `io.Writer`. It is useful when you need to build data and then read it back — for example, when constructing a request body or buffering output before flushing it:
+
+```go
+var buf bytes.Buffer
+buf.WriteString("hello")
+data, _ := io.ReadAll(&buf)
+fmt.Println(string(data)) // hello
+
+```
+
+## The io.Writer interface
+
+`io.Writer` mirrors `io.Reader` on the output side:
+
+```go
+type Writer interface {
+    Write(p []byte) (n int, err error)
+}
+
+```
+
+`Write` writes `len(p)` bytes from `p` to the underlying sink. It returns the number of bytes written (`n`) and any error that stopped the write early. The contract imposes two obligations: if `n < len(p)`, the implementation must return a non-nil error, and the slice `p` must not be modified — the caller retains ownership and may reuse it immediately after `Write` returns.
+
+## Implementing io.Writer
+
+Satisfying `io.Writer` is straightforward as long as you respect the contract. Here is a writer that counts the total bytes written across all calls:
+
+```go
+type CountingWriter struct {
+    w     io.Writer
+    total int
+}
+
+func (cw *CountingWriter) Write(p []byte) (int, error) {
+    n, err := cw.w.Write(p)
+    cw.total += n
+    return n, err
+}
+
+```
+
+`CountingWriter` delegates to an underlying writer and accumulates how much data has flowed through. Any code expecting an `io.Writer` can use it transparently. This pattern — wrapping a writer to add behavior — is how the standard library builds compressed writers, hash-computing writers, and multi-writers.
+
+<Callout type="note" title="Return an error when n < len(p)">
+If your implementation writes fewer bytes than requested and returns a nil error, callers will assume all bytes were written and silently lose data. The `io.Writer` contract requires that `n < len(p)` always accompanies a non-nil error — so if your write is partial, always return an appropriate error alongside the byte count.
+</Callout>
+
+## Common io.Writer implementations
+
+**`*os.File`** lets you write to files and to standard streams. `os.Stdout` and `os.Stderr` are pre-opened `*os.File` values that implement `io.Writer`, so you can pass them directly to any function expecting a writer:
+
+```go
+fmt.Fprintln(os.Stdout, "hello")
+
+f, err := os.Create("output.txt")
+if err != nil {
+    log.Fatal(err)
+}
+defer f.Close()
+
+f.Write([]byte("some content\n"))
+
+```
+
+**`http.ResponseWriter`** is an `io.Writer` that writes to the body of an HTTP response. Any function that writes to an `io.Writer` can write to an HTTP client without modification:
+
+```go
+func handler(w http.ResponseWriter, r *http.Request) {
+    fmt.Fprintln(w, "hello, client")
+}
+
+```
+
+**`bytes.Buffer`** accumulates written bytes in memory and can be read back as a `[]byte` or `string`. It is useful for building output incrementally before consuming it all at once:
+
+```go
+var buf bytes.Buffer
+fmt.Fprintf(&buf, "name: %s, age: %d", "Alice", 30)
+fmt.Println(buf.String()) // name: Alice, age: 30
+
+```
+
+## Composing I/O with io.Copy
+
+Because `io.Reader` and `io.Writer` share a common contract, they compose naturally. The most direct example is `io.Copy`:
+
+```go
+func Copy(dst Writer, src Reader) (written int64, err error)
+
+```
+
+`io.Copy` reads from `src` in chunks and writes each chunk to `dst` until `src` is exhausted or an error occurs. It handles the read loop, buffer management, and partial-write errors for you:
+
+```go
+src, err := os.Open("input.txt")
+if err != nil {
+    log.Fatal(err)
+}
+defer src.Close()
+
+dst, err := os.Create("output.txt")
+if err != nil {
+    log.Fatal(err)
+}
+defer dst.Close()
+
+n, err := io.Copy(dst, src)
+fmt.Printf("copied %d bytes\n", n)
+
+```
+
+The same call works if `src` is an HTTP body, a `strings.Reader`, or any other `io.Reader`. The `dst` could be a file, a network socket, or a `bytes.Buffer`. `io.Copy` does not care — it only knows about the two interfaces.
+
+Functions across the standard library accept `io.Reader` or `io.Writer` for exactly this reason. `fmt.Fprintf` writes formatted output to any `io.Writer`. `json.NewDecoder` reads JSON from any `io.Reader`. `gzip.NewWriter` compresses any stream flowing into an `io.Writer`. Every one of these works with any compatible type, including your own.
+
+<Callout type="note" title="Accept interfaces, gain composability">
+  When you write a function that accepts `io.Reader` or `io.Writer` instead of a
+  concrete type like `*os.File`, callers can pass files, network connections,
+  compressed streams, or in-memory buffers — without any changes to your
+  function. This is one of the most practical expressions of Go's interface
+  model in everyday code.
+</Callout>

@@ -1,0 +1,228 @@
+---
+title: Goroutines and the Go scheduler
+description: Learn what goroutines are, how they differ from OS threads and green threads, and how Go's GMP scheduler multiplexes millions of goroutines across CPU cores.
+slug: goroutines
+publishedAt: '2026-05-05'
+keywords:
+  - golang
+  - goroutines
+  - scheduler
+  - GMP
+  - concurrency
+  - green threads
+  - coroutines
+---
+
+The [previous article](/en-US/categories/golang/articles/concurrency-model) introduced goroutines as Go's basic unit of concurrent execution and described how channels let them communicate. But the description left an important question unanswered: what exactly _is_ a goroutine? It is not an OS thread, not a green thread, and not a coroutine — though it borrows ideas from all three. Understanding what goroutines are and how the Go scheduler manages them explains why you can launch a million of them without a second thought, and why concurrent Go programs feel fundamentally different to write than concurrent programs in other languages.
+
+## Every Go program has at least one goroutine
+
+Before you launch a single `go` statement, your program is already concurrent: the `main` function itself runs inside a goroutine, conventionally called the **main goroutine**. When `main` returns, the Go runtime shuts down the entire program — regardless of how many other goroutines are still running. The main goroutine is the anchor.
+
+Any function can be promoted to a goroutine with the `go` keyword:
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+)
+
+func greet(name string) {
+	fmt.Printf("hello, %s\n", name)
+}
+
+func main() {
+	var wg sync.WaitGroup
+
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		greet("Alice")
+	}()
+	go func() {
+		defer wg.Done()
+		greet("Bob")
+	}()
+
+	fmt.Println("goroutines launched")
+	wg.Wait()
+}
+
+```
+
+The `go` keyword is deceptively simple. The statement `go greet("Alice")` returns immediately — it schedules the function to run concurrently and continues to the next line without waiting. The output order of the two greetings is not guaranteed; either can run first, or both can run simultaneously on different CPU cores.
+
+<Callout type="note" title="goroutines are not fire-and-forget">
+  If `main` returns before a goroutine has a chance to run, that goroutine is
+  silently discarded. Always coordinate goroutine lifetimes — with
+  `sync.WaitGroup`, channels, or a `context` — before returning from `main`.
+</Callout>
+
+## OS threads
+
+To understand what makes goroutines unusual, it helps to start with the most familiar concurrency primitive: the **OS thread**.
+
+A thread is the OS's unit of CPU scheduling. Every process has at least one thread (the one that runs `main`), and can create additional threads to do work concurrently. The OS kernel schedules threads onto CPU cores, preempts them when their time slice expires, and switches between them as needed.
+
+OS threads are powerful but expensive:
+
+- **Stack size**: the OS typically allocates a fixed stack of 1–8 MB per thread at creation time. Most of that space goes unused for most threads.
+- **Context switch cost**: switching between threads requires the kernel to save and restore dozens of CPU registers, switch the memory protection context, and flush parts of the CPU pipeline. This takes thousands of nanoseconds.
+- **Kernel involvement**: creating, destroying, and scheduling threads all require system calls — transitions from user space into the kernel and back.
+
+For servers handling thousands of simultaneous connections, creating one OS thread per connection quickly becomes impractical. The memory alone for 10,000 threads — each with a 2 MB stack — amounts to 20 GB.
+
+## Green threads
+
+The response to OS thread overhead was **green threads**: threads managed entirely in user space by a language runtime or virtual machine, rather than by the OS kernel.
+
+Green threads are much lighter than OS threads. The runtime controls their creation and scheduling, so there is no kernel involvement. Stacks can start small and grow only as needed. Context switches happen entirely in user space — no system call, no kernel trap.
+
+The limitation of early green thread implementations was that they typically used a **M:1 model**: all goroutines multiplexed onto a single OS thread. This meant:
+
+- No true parallelism — at most one goroutine ran at a time, on one CPU core.
+- A single blocking system call (like a file read) would block the entire program, since it blocked the one underlying OS thread.
+
+Some runtimes addressed the second problem by wrapping blocking calls, but the single-thread parallelism ceiling remained. Early versions of Java used green threads with this limitation before switching to native OS threads in Java 1.2.
+
+## Coroutines
+
+A **coroutine** is a function that can suspend its own execution and transfer control to another coroutine explicitly. Rather than the scheduler deciding when to preempt a function, the function cooperates: it yields at defined points, passes control elsewhere, and resumes later from where it left off.
+
+Coroutines are elegant for structuring programs that deal with sequences of events. An HTTP handler written as a coroutine can suspend while waiting for a database query, allow other handlers to run, and resume when the result arrives — without the complexity of callbacks or the overhead of a full OS thread per request.
+
+Modern languages have embraced coroutines under different names: Python's `async`/`await`, Kotlin's `suspend` functions, JavaScript's generators. The common thread is cooperative scheduling — the programmer explicitly marks where a function may yield.
+
+The strength of coroutines is also their constraint: cooperation is required. A coroutine that never yields blocks everything waiting behind it. CPU-bound code that runs in a tight loop without yielding starves other coroutines. Developers must be disciplined about when and where they yield.
+
+## Goroutines: the synthesis
+
+Goroutines are the result of taking the best ideas from each of these models and discarding their limitations.
+
+|                    | OS threads        | Green threads (M:1)  | Coroutines  | Goroutines                       |
+| ------------------ | ----------------- | -------------------- | ----------- | -------------------------------- |
+| Managed by         | OS kernel         | Runtime              | Runtime     | Go runtime                       |
+| Initial stack      | 1–8 MB fixed      | Varies               | Varies      | ~2–4 KB, grows                   |
+| Scheduling         | Preemptive        | Cooperative          | Cooperative | Preemptive (Go 1.14+)            |
+| True parallelism   | Yes               | No                   | No          | Yes (M:N)                        |
+| Context switch     | ~1–10 µs (kernel) | ~100 ns (user space) | ~100 ns     | ~100 ns                          |
+| Blocking a thread? | Yes               | Yes (M:1)            | Depends     | No — runtime parks the goroutine |
+
+The key innovation is the **M:N model**: M goroutines are multiplexed onto N OS threads, where N is typically the number of available CPU cores. This gives goroutines the parallelism of OS threads and the lightness of green threads, while the runtime handles the cooperative-vs-preemptive tension automatically.
+
+## The Go scheduler
+
+Go's scheduler is called the **GMP scheduler**, after its three components:
+
+- **G** — a goroutine
+- **M** — a machine (an OS thread)
+- **P** — a processor (a logical CPU, controlled by `GOMAXPROCS`)
+
+Each P has a **local run queue**: a list of goroutines waiting to run. A P is always attached to exactly one M (OS thread), and that M runs one goroutine at a time. The runtime creates as many P's as `GOMAXPROCS` specifies (defaulting to the number of CPU cores) and distributes work among them.
+
+```
+┌──────────────────────────────────────────────────────┐
+│                     Go Runtime                       │
+│                                                      │
+│   ┌──────────────────┐   ┌──────────────────┐        │
+│   │        P1        │   │        P2        │        │
+│   │   local queue    │   │   local queue    │        │
+│   │  [G3] [G4] [G5]  │   │  [G6] [G7]       │        │
+│   └────────┬─────────┘   └────────┬─────────┘        │
+│            │                      │                  │
+│           M1 (OS thread)         M2 (OS thread)      │
+│            │                      │                  │
+│         Core 1                 Core 2                │
+│                                                      │
+│   Global queue: [G8] [G9] [G10] ...                  │
+└──────────────────────────────────────────────────────┘
+
+```
+
+When a P's local queue runs dry, it does not simply wait. It **steals** goroutines from another P's queue — typically half of that P's backlog. This work-stealing keeps all P's busy as long as there is goroutines to run, distributing load automatically without any programmer intervention.
+
+You can read and control `GOMAXPROCS` at runtime:
+
+```go
+import (
+	"fmt"
+	"runtime"
+)
+
+func main() {
+	// read the current value (0 = query without changing)
+	procs := runtime.GOMAXPROCS(0)
+	fmt.Printf("using %d logical processors\n", procs)
+}
+
+```
+
+In production, the default (number of CPU cores) is almost always correct. You rarely need to change it.
+
+## Blocking without blocking
+
+One of the scheduler's most important jobs is handling goroutines that block. When a goroutine waits for a channel receive, a mutex, or a network read, it must pause — but it should not hold its OS thread hostage while it does.
+
+The runtime handles this transparently:
+
+1. The goroutine calls an operation that would block (e.g., reading from an empty channel).
+2. The runtime **parks** the goroutine: it removes it from the run queue and marks it as waiting.
+3. The P immediately schedules the next goroutine from its local queue onto the same M (OS thread).
+4. When the blocking condition resolves (a value is sent to the channel), the runtime **unparks** the goroutine — placing it back into a run queue to be scheduled again.
+
+```
+Traditional threads:              Goroutines:
+
+Thread 1 → blocks on I/O         G1 → blocks on I/O
+           waiting...                 ↓ runtime parks G1
+           waiting...             G2 → runs on the same OS thread
+           waiting...             G3 → runs on the same OS thread
+Thread 1 ← resumes                G1 ← unparked when I/O completes
+
+```
+
+The left side wastes an OS thread for the entire duration of the I/O. The right side keeps the OS thread doing useful work. This is why a Go HTTP server can handle tens of thousands of simultaneous connections on a handful of OS threads — the connections are handled by goroutines, and parked goroutines cost nothing in terms of OS resources.
+
+For blocking system calls (like reading from a file), the runtime uses a different mechanism: it detaches the P from the M before the system call, attaches the P to a different M (creating one if needed), and continues running other goroutines. When the system call returns, the runtime tries to attach the original M back to a P.
+
+<Callout type="note" title="Network I/O is handled differently">
+  Go uses non-blocking I/O under the hood for network operations. The runtime
+  integrates with the OS's I/O multiplexing mechanism (epoll on Linux, kqueue on
+  macOS) so that goroutines waiting on network I/O are parked in user space, not
+  blocking an OS thread at all.
+</Callout>
+
+## Preemption
+
+Early versions of Go used purely cooperative scheduling: a goroutine would only yield at specific points — function calls, channel operations, explicit calls to `runtime.Gosched()`. A tight loop with no function calls could monopolize a P indefinitely, starving other goroutines on that processor.
+
+Go 1.14 introduced **asynchronous preemption**: the runtime sends a signal to an OS thread, interrupting whatever goroutine is running and giving the scheduler a chance to switch to another. This happens transparently — goroutines do not need to yield explicitly, and CPU-bound code no longer starves the scheduler.
+
+```go
+// Before Go 1.14, this loop would starve other goroutines on the same P
+// From Go 1.14 onward, it is preempted periodically by the scheduler
+go func() {
+	for {
+		// tight CPU-bound loop — no function calls, no yield points
+		result := heavyComputation()
+		_ = result
+	}
+}()
+
+```
+
+Asynchronous preemption is one reason you rarely need `runtime.Gosched()` in modern Go. The scheduler handles fairness automatically.
+
+## What this means in practice
+
+The GMP model has practical consequences for how you write Go:
+
+**Goroutines are cheap — use them freely.** Launching a goroutine costs a few microseconds and ~2 KB of memory. If a task can run independently, put it in a goroutine. You do not need to build thread pools or work queues to manage concurrency overhead — that is the runtime's job.
+
+**Blocking is not a problem.** Blocking on a channel, waiting for a mutex, sleeping — these park the goroutine without wasting an OS thread. You do not need to convert every blocking call to an async callback to avoid starving the runtime.
+
+**`GOMAXPROCS` controls parallelism, not concurrency.** Setting `GOMAXPROCS(1)` makes the program single-threaded from the OS perspective, but goroutines still run concurrently via time-slicing on that one thread. Race conditions still exist. The race detector still applies.
+
+**Goroutines are not free from coordination.** The scheduler handles low-level scheduling, but the high-level coordination — who sends to whom, who waits for what, how cancellation propagates — is still the programmer's responsibility. That coordination is expressed through channels, `sync`, and `context`, not through the scheduler itself.

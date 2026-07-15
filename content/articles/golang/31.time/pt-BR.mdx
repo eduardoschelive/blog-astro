@@ -1,0 +1,265 @@
+---
+title: Time em Go
+description: Aprenda como Go representa o tempo com leituras de wall clock e monotonic clock, e como trabalhar com os tipos time.Time e time.Duration da biblioteca padrão.
+slug: tempo
+publishedAt: '2026-04-29'
+keywords:
+  - golang
+  - time
+  - time.Time
+  - time.Duration
+  - wall clock
+  - monotonic clock
+  - pacote time
+---
+
+Programas precisam trabalhar com tempo constantemente. Você usa tempo para agendar tarefas em background, medir quanto tempo uma operação leva, definir expiração de valores em cache, ou determinar se um evento aconteceu antes ou depois de outro. Mas "tempo" significa coisas diferentes dependendo do que você está fazendo — e entender essa distinção é a base para usar o pacote `time` do Go corretamente.
+
+## Dois tipos de tempo
+
+Quando um programa lê o relógio, ele usa um de dois tipos fundamentalmente diferentes de clock que o sistema operacional disponibiliza.
+
+### Wall clock time
+
+Wall clock time representa o horário real — o tipo que você leria em um relógio na parede. Ele corresponde a um instante do mundo real e é geralmente expresso em relação a um padrão como UTC. Quando seu programa registra `"requisição recebida em 2024-01-15 10:30:00 UTC"`, ele está usando wall clock time.
+
+O problema com wall clock time é que ele pode dar saltos. A sincronização NTP pode mover o relógio para frente ou para trás alguns milissegundos (ou segundos) para corrigir deriva. Mudanças de horário de verão adicionam ou removem uma hora. Um administrador de sistema pode definir o horário manualmente. Se você tentar medir tempo decorrido registrando um instante de início e subtraindo de um instante de fim usando leituras de wall clock, um ajuste de relógio no meio do caminho pode resultar em uma duration negativa ou completamente incorreta.
+
+### Monotonic time
+
+Um monotonic clock é um contador que só aumenta. Ele não tem relação com o horário do dia — simplesmente mede quanto tempo passou desde algum ponto de partida arbitrário (tipicamente o boot do sistema). Como nunca vai para trás, é a ferramenta certa para medir duration de forma confiável.
+
+A conclusão é: use wall clock time quando precisar saber _quando_ algo aconteceu; use monotonic time quando precisar medir _quanto tempo_ algo levou.
+
+## O pacote time
+
+O pacote `time` da biblioteca padrão do Go oferece os dois tipos. Quando você chama `time.Now()`, o valor retornado contém tanto uma leitura de wall clock quanto uma leitura de monotonic clock. Os dois principais tipos com que você trabalhará são `time.Duration` e `time.Time`.
+
+## time.Duration
+
+`time.Duration` representa um intervalo de tempo. Sua definição é simples:
+
+```go
+type Duration int64
+
+```
+
+O tipo subjacente é `int64`, e o valor armazenado está sempre em nanosegundos. Um segundo equivale a 1.000.000.000 nanosegundos — bem dentro do range de um `int64`.
+
+### Constantes de Duration
+
+O pacote `time` define constantes para unidades comuns, cada uma construída a partir da anterior:
+
+```go
+const (
+    Nanosecond  Duration = 1
+    Microsecond          = 1000 * Nanosecond
+    Millisecond          = 1000 * Microsecond
+    Second               = 1000 * Millisecond
+    Minute               = 60 * Second
+    Hour                 = 60 * Minute
+)
+
+```
+
+Você constrói durations multiplicando essas constantes por um inteiro:
+
+```go
+timeout := 5 * time.Second         // 5 000 000 000 nanoseconds
+delay   := 250 * time.Millisecond
+wait    := 2*time.Hour + 30*time.Minute
+
+```
+
+Isso é pura aritmética de inteiros. Não há nenhum construtor especial — multiplicar uma constante por um inteiro já produz um `time.Duration` diretamente, porque as próprias constantes são valores do tipo `time.Duration`.
+
+### Parsing de durations
+
+Quando uma duration vem de configuração ou de input do usuário, `time.ParseDuration` faz o parsing de uma string legível para um `time.Duration`:
+
+```go
+d, err := time.ParseDuration("1h30m")
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(d) // 1h30m0s
+
+```
+
+Os identificadores de unidade válidos são `"ns"`, `"us"` (ou `"µs"`), `"ms"`, `"s"`, `"m"` e `"h"`. As unidades podem ser combinadas livremente: `"2h45m30s"`, `"100ms"`, `"1.5s"`.
+
+### Comparação e aritmética
+
+Como `time.Duration` é um `int64`, os operadores de comparação padrão funcionam diretamente:
+
+```go
+a := 2 * time.Second
+b := 500 * time.Millisecond
+
+fmt.Println(a > b)  // true
+fmt.Println(a == b) // false
+
+```
+
+Você pode somar e subtrair durations com aritmética comum:
+
+```go
+total := 1*time.Hour + 30*time.Minute // 1h30m0s
+
+```
+
+### Métodos
+
+`time.Duration` tem métodos para extrair seu valor expresso em uma unidade específica:
+
+```go
+d := 2*time.Hour + 15*time.Minute + 30*time.Second
+
+fmt.Println(d.Hours())        // 2.258333...
+fmt.Println(d.Minutes())      // 135.5
+fmt.Println(d.Seconds())      // 8130
+fmt.Println(d.Milliseconds()) // 8130000
+fmt.Println(d.String())       // 2h15m30s
+
+```
+
+`Hours()`, `Minutes()` e `Seconds()` retornam `float64` — o total expresso naquela unidade, não apenas o componente. Então `d.Hours()` não retorna `2`; retorna toda a duration convertida para horas como fração. `Milliseconds()` retorna `int64`. `String()` formata a duration na mesma notação que `ParseDuration` aceita.
+
+### Since e Until
+
+Duas funções auxiliares fazem a ponte entre `time.Time` e `time.Duration`:
+
+- `time.Since(t)` retorna quanto tempo passou desde `t`. É equivalente a `time.Now().Sub(t)`.
+- `time.Until(t)` retorna quanto tempo falta até `t`. É equivalente a `t.Sub(time.Now())`.
+
+```go
+start := time.Now()
+// ... realizar algum trabalho ...
+elapsed := time.Since(start)
+fmt.Printf("operação levou %v\n", elapsed)
+
+```
+
+```go
+deadline := time.Now().Add(5 * time.Minute)
+// ... mais tarde ...
+remaining := time.Until(deadline)
+fmt.Printf("%.0f segundos restantes\n", remaining.Seconds())
+
+```
+
+## time.Time
+
+`time.Time` representa um instante específico no tempo. Internamente, armazena uma leitura de wall clock, uma leitura de monotonic clock (quando disponível), e um valor de location que determina como o instante é exibido.
+
+### Criando valores de Time
+
+`time.Now()` retorna o horário atual com as duas leituras de clock preenchidas:
+
+```go
+t := time.Now()
+fmt.Println(t) // 2024-01-15 10:30:00.123456789 -0300 -03
+
+```
+
+Você também pode construir um instante específico com `time.Date`:
+
+```go
+t := time.Date(2024, time.January, 15, 10, 30, 0, 0, time.UTC)
+
+```
+
+### Use Time como value, não como pointer
+
+`time.Time` foi projetado para ser copiado, não referenciado. Passe-o por value:
+
+```go
+// Correto
+func deadline() time.Time {
+    return time.Now().Add(5 * time.Minute)
+}
+
+// Evite
+func deadline() *time.Time {
+    t := time.Now().Add(5 * time.Minute)
+    return &t
+}
+
+```
+
+Retornar `*time.Time` adiciona indireção desnecessária e força os chamadores a lidar com verificações de nil. A única exceção é um campo de struct que precisa serializar como `null` em JSON — um pointer para `time.Time` é serializado como `null` quando nil, algo que um tipo por value não consegue expressar.
+
+### O zero value
+
+O zero value de `time.Time` é 1° de janeiro do ano 1, 00:00:00.000000000 UTC. Esse instante está suficientemente distante de qualquer data realista para ser um sentinel value confiável — você pode usá-lo para representar "não definido".
+
+Use `IsZero()` para verificá-lo:
+
+```go
+var t time.Time
+fmt.Println(t.IsZero()) // true
+fmt.Println(t)          // 0001-01-01 00:00:00 +0000 UTC
+
+```
+
+<Callout type="note" title="Prefira IsZero em vez de comparação direta">
+  Embora `t == time.Time{}` funcione tecnicamente, `IsZero()` é a escolha
+  idiomática. Ela expressa a intenção claramente e não é afetada por mudanças na
+  representação interna do zero value.
+</Callout>
+
+### Add e Sub
+
+`Add` recebe um `time.Duration` e retorna um novo `time.Time` deslocado por essa duration:
+
+```go
+now := time.Now()
+later   := now.Add(5 * time.Minute)  // 5 minutos no futuro
+earlier := now.Add(-2 * time.Hour)   // 2 horas no passado
+
+```
+
+Passar uma duration negativa move para trás no tempo. Não existe um método separado para subtrair uma duration — `Add` cobre as duas direções.
+
+`Sub` recebe dois valores `time.Time` e retorna o `time.Duration` entre eles:
+
+```go
+start := time.Now()
+end   := start.Add(3*time.Hour + 15*time.Minute)
+
+elapsed := end.Sub(start)
+fmt.Println(elapsed) // 3h15m0s
+
+```
+
+A tabela abaixo mostra como as duas operações se relacionam:
+
+| Operação | Assinatura                | Retorna                                  |
+| -------- | ------------------------- | ---------------------------------------- |
+| `Add`    | `Time.Add(Duration) Time` | Um novo instante deslocado pela duration |
+| `Sub`    | `Time.Sub(Time) Duration` | O intervalo entre dois instantes         |
+
+### Comparando times
+
+Como `time.Time` armazena tanto uma leitura de wall clock quanto de monotonic clock junto com um location, usar `==` pode produzir resultados surpreendentes. Dois valores que representam o mesmo instante em UTC podem não ser iguais sob `==` se um tiver uma leitura monotonic que o outro não tem, ou se seus location pointers forem diferentes.
+
+A abordagem correta é usar os métodos de comparação:
+
+```go
+a := time.Now()
+b := a.Add(time.Hour)
+
+fmt.Println(a.Before(b)) // true
+fmt.Println(b.After(a))  // true
+fmt.Println(a.Equal(a))  // true
+
+```
+
+`Equal` compara apenas o instante de tempo subjacente, ignorando location e leituras monotonic. Dois valores `time.Time` que representam o mesmo instante em UTC são `Equal` mesmo que tenham sido criados com valores `*time.Location` diferentes.
+
+<Callout type="warning" title="Evite == para comparar times">
+  Usar `==` em valores `time.Time` compara a representação interna completa,
+  incluindo location pointers e leituras monotonic. Dois valores que representam
+  o mesmo instante podem ser considerados diferentes. Sempre use `Equal`,
+  `Before` ou `After`.
+</Callout>

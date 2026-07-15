@@ -1,0 +1,299 @@
+---
+title: Project structure
+description: Learn how to structure Go projects from a single-file library to multi-package applications with internal packages, multiple executables, and workspace mode.
+slug: project-structure
+publishedAt: '2026-04-27'
+keywords:
+  - golang
+  - project structure
+  - go modules
+  - internal packages
+  - cmd pattern
+  - package layout
+  - go work
+  - workspace mode
+  - go workspace
+---
+
+Go imposes very few requirements on how you arrange files. The language spec says nothing about directory depth, naming conventions for non-package directories, or how many packages belong in a repository. That freedom is deliberate — but it also means that structure is a decision you make, not one the compiler makes for you. The patterns that have emerged from the Go community are pragmatic: they reflect what the toolchain actually rewards, not abstract architectural ideals. Understanding them helps you start projects in a shape that grows well.
+
+## Simple package
+
+The simplest possible Go project is a single package with no sub-directories: a `go.mod` at the root, source files alongside it, and tests next to the code they test.
+
+```
+slugify/
+├── go.mod
+├── go.sum
+├── slugify.go
+└── slugify_test.go
+
+```
+
+```go
+module github.com/eduardoschelive/slugify
+
+go 1.24
+
+```
+
+The directory name is `slugify`, the package declaration in every file is `package slugify`, and the module path is `github.com/eduardoschelive/slugify`. All three match — this predictability is the rule, not the exception.
+
+This layout works for any focused library. Tests live in `slugify_test.go` next to the code. Consumers import the package with `github.com/eduardoschelive/slugify` and call exported functions directly. There is nothing to navigate, nothing to discover — you open the directory and everything is there.
+
+## Multi-file simple package
+
+When a package grows, you split it across multiple files without adding directories. Each file still declares the same package name. The compiler treats all files in the same directory as a single compilation unit.
+
+```
+currency/
+├── go.mod
+├── go.sum
+├── currency.go
+├── currency_test.go
+├── format.go
+└── format_test.go
+
+```
+
+```go
+module github.com/eduardoschelive/currency
+
+go 1.24
+
+```
+
+`currency.go` might define the core `Currency` type and arithmetic. `format.go` adds formatting logic — locale-aware string representation. Both files declare `package currency`. From the outside, this is still a single package: callers import `github.com/eduardoschelive/currency` and see all exported identifiers from both files with no indication of the split.
+
+Splitting by concern within a package is a maintenance choice, not a design boundary. It keeps files focused without imposing the overhead of a new package, import path, or public API surface.
+
+<Callout type="note" title="Files in the same directory form one package">
+  All `.go` files in a directory are compiled together. Splitting into multiple
+  files does not create multiple packages — it organizes one package's source.
+  The package boundary is always the directory boundary.
+</Callout>
+
+## Simple executable
+
+When you need a runnable program rather than an importable library, the root package is `main` and one file defines the `main()` function.
+
+```
+counter/
+├── go.mod
+├── go.sum
+├── main.go
+├── counter.go
+└── counter_test.go
+
+```
+
+```go
+module github.com/eduardoschelive/counter
+
+go 1.24
+
+```
+
+`main.go` is the entry point — it parses flags, wires dependencies, and calls into the rest of the package. `counter.go` contains the actual line-counting logic. Both files declare `package main`.
+
+Keeping the logic outside of `main.go` and in named files makes it testable. You cannot call `main()` from a test, but you can call `Count()` or any other exported function from `counter.go`. This separation is the minimum structure a CLI tool needs to stay testable without adding package complexity.
+
+## Multi-package project
+
+When a project provides multiple related but distinct capabilities, you split into sub-packages. Each sub-directory is an independent [package](/en-US/categories/golang/articles/packages) with its own import path.
+
+```
+notify/
+├── go.mod
+├── go.sum
+├── notify.go
+├── notify_test.go
+├── email/
+│   ├── email.go
+│   └── email_test.go
+└── sms/
+    ├── sms.go
+    └── sms_test.go
+
+```
+
+```go
+module github.com/eduardoschelive/notify
+
+go 1.24
+
+```
+
+The root package `notify` defines a shared `Notification` type and a common interface. `email` and `sms` are concrete implementations — each has its own package declaration, import path, and exported surface:
+
+```go
+import (
+    "github.com/eduardoschelive/notify"
+    "github.com/eduardoschelive/notify/email"
+    "github.com/eduardoschelive/notify/sms"
+)
+
+```
+
+Sub-packages are independent compilation units. They import from the root package freely, but the root package cannot import from its sub-packages without creating a dependency cycle. Design the package hierarchy so dependencies flow from root toward leaves, not in the other direction.
+
+## Internal packages
+
+Go enforces one access restriction that goes beyond the exported/unexported distinction: the `internal/` directory. A package whose path contains `internal` can only be imported by code rooted at the parent of `internal`.
+
+```
+gateway/
+├── go.mod
+├── go.sum
+├── gateway.go
+├── gateway_test.go
+└── internal/
+    ├── auth/
+    │   ├── auth.go
+    │   └── auth_test.go
+    ├── client/
+    │   ├── client.go
+    │   └── client_test.go
+    └── retry/
+        ├── retry.go
+        └── retry_test.go
+
+```
+
+```go
+module github.com/eduardoschelive/gateway
+
+go 1.24
+
+```
+
+`internal/auth`, `internal/client`, and `internal/retry` are full packages with their own import paths, but they are invisible to any code outside the `gateway` module. Another module that depends on `github.com/eduardoschelive/gateway` cannot import `github.com/eduardoschelive/gateway/internal/auth` — the compiler rejects it.
+
+<Callout
+  type="warning"
+  title="internal/ is compiler-enforced, not a convention"
+>
+  The restriction is not advisory. If code outside the allowed parent tries to
+  import an `internal` package, the build fails with an error. This makes
+  `internal/` the right place for implementation details that must not become
+  part of the public API — even if someone wanted to import them, they could
+  not.
+</Callout>
+
+This layout is common in libraries and services that need helper packages for their own implementation but do not want to expose those helpers to consumers. It lets you refactor `internal/` freely without worrying about breaking downstream callers, since there are no legal downstream callers.
+
+## Multiple executables
+
+When a project ships more than one binary — a server and a migration tool, an API and a worker — the standard layout uses a `cmd/` directory with one sub-directory per binary.
+
+```
+platform/
+├── go.mod
+├── go.sum
+├── cmd/
+│   ├── api/
+│   │   └── main.go
+│   └── worker/
+│       └── main.go
+├── internal/
+│   ├── handler/
+│   │   ├── handler.go
+│   │   └── handler_test.go
+│   └── queue/
+│       ├── queue.go
+│       └── queue_test.go
+└── store/
+    ├── store.go
+    └── store_test.go
+
+```
+
+```go
+module github.com/eduardoschelive/platform
+
+go 1.24
+
+```
+
+Each directory under `cmd/` declares `package main` and contains a single `main.go`. They are built independently:
+
+```bash
+go build ./cmd/api
+go build ./cmd/worker
+
+```
+
+The shared logic lives in `internal/` and `store/`. Both binaries import from those packages. Neither binary imports from the other. The shared code is testable in isolation; the binaries are thin shells that wire everything together.
+
+This pattern scales cleanly. Adding a third binary means adding `cmd/migrate/main.go` — no changes to existing packages, no new dependency management concerns.
+
+## Workspace mode
+
+When you develop two related modules in parallel — a shared library and an application that imports it — you normally need to publish the library and bump its version in the application's `go.mod` on every change. During active development, that cycle is impractical.
+
+Go 1.18 introduced **workspaces** to solve this. A workspace is a `go.work` file at the root of your working tree that tells the toolchain to use local directories in place of downloaded module versions.
+
+**Scenario:** you have a shared library and an application in sibling directories:
+
+```
+work/
+├── mylib/
+│   ├── go.mod    (module github.com/org/mylib)
+│   └── mylib.go
+└── myapp/
+    ├── go.mod    (module github.com/org/myapp, requires github.com/org/mylib)
+    └── main.go
+
+```
+
+Initialize a workspace from the `work/` directory:
+
+```bash
+go work init ./mylib ./myapp
+
+```
+
+This creates `go.work`:
+
+```
+go 1.24
+
+use (
+    ./mylib
+    ./myapp
+)
+
+```
+
+Now every `go` command run from anywhere inside `work/` resolves `github.com/org/mylib` to the local `./mylib` directory, ignoring whatever version `myapp/go.mod` lists. Changes to the library are immediately visible in the application without publishing or replacing `require` entries.
+
+To add more modules to an existing workspace:
+
+```bash
+go work use ./anotherpkg
+
+```
+
+<Callout type="warning" title="go.work is for development, not distribution">
+  Do not commit `go.work` to repositories that are consumed as libraries — it
+  would redirect consumers to your local paths. Add it to `.gitignore` in those
+  cases. For applications (no external consumers), committing `go.work` is fine
+  if the team shares the same directory layout.
+</Callout>
+
+## Choosing a layout
+
+| Project type                   | Layout                       |
+| ------------------------------ | ---------------------------- |
+| Single-purpose library         | Flat root package            |
+| Growing library                | Multiple files, same package |
+| Single CLI or tool             | `package main` at root       |
+| Library with sub-capabilities  | Sub-packages in root         |
+| Library with private helpers   | `internal/` at root          |
+| Multiple binaries sharing code | `cmd/` + `internal/`         |
+
+Start with the simplest layout that fits. A library with three source files does not need `internal/`. A CLI with a single binary does not need `cmd/`. Add structure when a concrete problem demands it — a package boundary that should not be crossed, a second binary, a shared type that multiple packages need. Premature structure adds navigation overhead without adding clarity.
+
+These patterns are community conventions, not language requirements. Real-world projects diverge from them constantly. You will encounter repositories with a `pkg/` directory at the root, monorepos containing dozens of modules, projects that use `cmd/` for a single binary, or legacy codebases shaped by conventions that predate Go modules. None of that is wrong — it reflects decisions made in a specific context. What matters is understanding _why_ a pattern exists so you can evaluate any structure you encounter, not just recognize whether it matches a template.
+
+Go's module system, described in the [dependency management](/en-US/categories/golang/articles/dependency-management) article, works the same way regardless of which layout you choose. The `go.mod` at the repository root is always the single source of truth for the module's identity and its dependencies.

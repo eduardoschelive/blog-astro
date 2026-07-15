@@ -1,0 +1,255 @@
+---
+title: Pacote context
+description: Aprenda como o pacote context do Go permite cancelamento, deadlines e valores com escopo de requisição em fronteiras de API e operações concorrentes.
+slug: contexto
+publishedAt: '2026-05-03'
+keywords:
+  - golang
+  - context
+  - cancelamento
+  - timeout
+  - deadline
+  - concorrência
+---
+
+## Por que context importa
+
+Na maioria das aplicações reais, operações não rodam de forma isolada. Um handler HTTP dispara uma query no banco de dados, que pode acionar um cache lookup, que chama uma API externa. Todas essas operações estão encadeadas — e compartilham o mesmo destino: se a requisição original for cancelada (por exemplo, o usuário fecha o navegador), toda operação downstream deveria parar também.
+
+É exatamente esse problema que o pacote `context` resolve. Ele fornece um mecanismo padrão para propagar sinais de cancelamento, deadlines e valores com escopo de requisição através de fronteiras de API e entre goroutines.
+
+Sem context, você precisaria inventar seus próprios channels de cancelamento, passá-los por toda parte e coordenar o encerramento manualmente. Com context, o Go padroniza esse contrato em uma única interface bem definida.
+
+## A interface Context
+
+O pacote `context` define uma única interface:
+
+```go
+type Context interface {
+    Deadline() (deadline time.Time, ok bool)
+    Done() <-chan struct{}
+    Err() error
+    Value(key any) any
+}
+
+```
+
+Cada método representa uma capacidade:
+
+| Método       | O que ele informa                                                                |
+| ------------ | -------------------------------------------------------------------------------- |
+| `Deadline()` | Retorna o momento em que o context será cancelado, se um foi definido            |
+| `Done()`     | Retorna um channel que é fechado quando o context é cancelado ou expira          |
+| `Err()`      | Retorna `context.Canceled` ou `context.DeadlineExceeded` após `Done` ser fechado |
+| `Value(key)` | Retorna o valor associado a uma chave armazenada no context                      |
+
+Você raramente implementa essa interface você mesmo. Em vez disso, usa as funções que o pacote fornece para criar e derivar contexts.
+
+## Contexts raiz
+
+Toda árvore de context começa de uma raiz. O pacote fornece dois construtores para isso:
+
+```go
+ctx := context.Background()
+ctx := context.TODO()
+
+```
+
+`context.Background()` é o ponto de partida convencional. Você o chama no topo do seu programa — em `main`, no setup de um handler de servidor, ou na raiz de um teste — e então deriva contexts filhos a partir dele.
+
+`context.TODO()` sinaliza que você ainda não decidiu qual context usar. Ele se comporta de forma idêntica ao `Background()` em runtime, mas serve como um marcador de que o código precisa ser revisitado. É um placeholder útil quando você está adicionando suporte a context em código existente de forma incremental.
+
+## Regras gerais
+
+O pacote `context` vem com algumas convenções que a comunidade Go trata como regras firmes.
+
+**Context deve ser criado no topo da chamada.** Não crie um context no fundo de uma função e deixe-o escapar para cima. O ciclo de vida do context deve refletir o ciclo de vida da operação que ele governa, que começa no ponto de entrada.
+
+**Context é o primeiro parâmetro de uma função.** Por convenção, se uma função aceita um context, ele é sempre o primeiro parâmetro e sempre se chama `ctx`:
+
+```go
+func fetchUser(ctx context.Context, id int) (*User, error) {
+    // ...
+}
+
+```
+
+Essa consistência torna imediatamente claro, à primeira vista, que uma função participa do sistema de context.
+
+**Nunca armazene context em um campo de struct.** Contexts têm escopo de requisição. Armazená-los em uma struct implica que eles poderiam sobreviver à requisição ou ser reutilizados entre requisições — ambos são bugs esperando para acontecer. Passe o context como parâmetro explícito sempre.
+
+**Nunca mute um context.** Cada função de derivação (como `WithCancel` ou `WithValue`) retorna um context _novo_. O original nunca é modificado. Essa imutabilidade torna seguro passar contexts entre goroutines sem sincronização.
+
+## Derivando contexts
+
+Você não usa contexts raiz diretamente na maioria das operações. Em vez disso, você os deriva — adicionando cancelamento, um deadline ou um valor — e passa o context derivado para downstream. Cada context derivado é filho do seu parent; cancelar um parent cancela todos os seus filhos automaticamente.
+
+### WithCancel
+
+`context.WithCancel` retorna um context filho e uma função `cancel`. Chamar `cancel` fecha o channel `Done` do context, sinalizando a todos os receptores que devem parar o trabalho:
+
+```go
+ctx, cancel := context.WithCancel(context.Background())
+defer cancel()
+
+go func() {
+    select {
+    case <-ctx.Done():
+        fmt.Println("goroutine cancelada:", ctx.Err())
+        return
+    case <-time.After(5 * time.Second):
+        fmt.Println("goroutine terminou o trabalho")
+    }
+}()
+
+time.Sleep(2 * time.Second)
+cancel() // dispara antes do timer de 5s, então a goroutine sai cedo
+
+```
+
+O padrão `defer cancel()` é crítico. Não chamar `cancel` vaza recursos — o runtime mantém o estado interno associado ao context até que ele seja cancelado ou seu parent seja cancelado. Sempre use `defer cancel()` imediatamente após chamar `WithCancel`.
+
+### WithTimeout e WithDeadline
+
+`context.WithTimeout` é a forma mais comum de impor uma duração máxima a uma operação:
+
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+defer cancel()
+
+req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.example.com/data", nil)
+resp, err := http.DefaultClient.Do(req)
+if err != nil {
+    // err encapsula context.DeadlineExceeded se o timeout disparar primeiro
+    fmt.Println("requisição falhou:", err)
+    return
+}
+defer resp.Body.Close()
+
+```
+
+`context.WithDeadline` faz a mesma coisa, mas você especifica um ponto absoluto no tempo em vez de uma duração:
+
+```go
+deadline := time.Now().Add(3 * time.Second)
+ctx, cancel := context.WithDeadline(context.Background(), deadline)
+defer cancel()
+
+```
+
+Ambas as funções retornam o mesmo tipo de context — `WithTimeout` é apenas um atalho para `WithDeadline(parent, time.Now().Add(timeout))`.
+
+<Callout type="note" title="Sempre use defer cancel">
+  Tanto `WithTimeout` quanto `WithDeadline` também retornam uma função cancel,
+  mesmo que o context vá se cancelar automaticamente quando o deadline for
+  atingido. Você ainda deve usar `defer cancel()` — isso libera recursos mais
+  cedo se a operação terminar antes do deadline disparar.
+</Callout>
+
+Quando o deadline passa, `ctx.Done()` é fechado e `ctx.Err()` retorna `context.DeadlineExceeded`. Bibliotecas bem escritas (como o cliente `net/http` padrão) verificam o context e retornam prontamente quando isso acontece.
+
+### WithValue
+
+`context.WithValue` permite anexar um valor a um context que pode ser recuperado em qualquer ponto downstream:
+
+```go
+type contextKey string
+
+const requestIDKey contextKey = "requestID"
+
+func middleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        id := generateRequestID()
+        ctx := context.WithValue(r.Context(), requestIDKey, id)
+        next.ServeHTTP(w, r.WithContext(ctx))
+    })
+}
+
+func handler(w http.ResponseWriter, r *http.Request) {
+    id := r.Context().Value(requestIDKey).(string)
+    fmt.Fprintf(w, "request ID: %s", id)
+}
+
+```
+
+Alguns detalhes importantes sobre `WithValue`:
+
+- A chave deve ser um tipo **comparável**. Use um tipo nomeado privado (como `contextKey` acima) em vez de uma `string` simples para evitar colisões com outros pacotes que possam usar o mesmo literal de string.
+- Valores armazenados em context devem ter **escopo de requisição** — coisas como IDs de requisição, tokens de autenticação ou metadados de tracing. Não use context como forma de passar parâmetros opcionais para funções.
+- `Value` percorre a cadeia de context do filho para o parent, então um valor definido em um context parent é visível para todos os seus descendentes.
+
+<Callout type="warning" title="Context não é substituto de parâmetro">
+  Pode ser tentador colocar inputs de funções no context para evitar mudar
+  assinaturas. Resista à tentação. Valores de context não têm tipo, são
+  invisíveis ao compilador e impossíveis de descobrir sem ler o código-fonte.
+  Use context para preocupações transversais — observabilidade, cancelamento,
+  identidade — não para lógica de domínio.
+</Callout>
+
+## Context na prática
+
+### Handlers HTTP
+
+Todo `*http.Request` carrega um context acessível via `r.Context()`. Quando o cliente desconecta, o servidor HTTP do Go cancela esse context automaticamente. Isso significa que qualquer query no banco de dados ou chamada downstream feita com esse context também será cancelada — sem necessidade de fiação extra:
+
+```go
+func (h *Handler) GetUser(w http.ResponseWriter, r *http.Request) {
+    ctx := r.Context()
+
+    user, err := h.db.QueryUser(ctx, r.PathValue("id"))
+    if err != nil {
+        if errors.Is(err, context.Canceled) {
+            // cliente desconectou — não há sentido em escrever uma resposta
+            return
+        }
+        http.Error(w, "internal error", http.StatusInternalServerError)
+        return
+    }
+
+    json.NewEncoder(w).Encode(user)
+}
+
+```
+
+### Queries no banco de dados
+
+A maioria dos drivers de banco de dados para Go aceita um context. Passar o context da requisição para suas queries significa que elas são automaticamente canceladas quando o chamador vai embora:
+
+```go
+func (db *DB) QueryUser(ctx context.Context, id string) (*User, error) {
+    row := db.pool.QueryRowContext(ctx, "SELECT id, name FROM users WHERE id = $1", id)
+
+    var u User
+    if err := row.Scan(&u.ID, &u.Name); err != nil {
+        return nil, err
+    }
+    return &u, nil
+}
+
+```
+
+### Goroutines de longa duração
+
+Para workers em background ou outras goroutines de longa duração, context fornece um sinal de encerramento limpo:
+
+```go
+func worker(ctx context.Context, jobs <-chan Job) {
+    for {
+        select {
+        case <-ctx.Done():
+            fmt.Println("worker encerrando:", ctx.Err())
+            return
+        case job, ok := <-jobs:
+            if !ok {
+                return
+            }
+            process(job)
+        }
+    }
+}
+
+```
+
+O `select` verifica tanto o channel de jobs quanto `ctx.Done()` a cada iteração. Quando o context é cancelado — seja por um timeout, uma chamada manual a `cancel()`, ou o cancelamento de um parent — a goroutine sai de forma limpa, sem polling ou busy-waiting.
+
+A propagação de context é um daqueles padrões que parece overhead no começo, mas traz dividendos à medida que o sistema cresce. Uma vez que você tem o cancelamento fluindo da requisição mais externa até suas goroutines e queries no banco de dados, você obtém um encerramento coordenado e sem leaks essencialmente de graça.

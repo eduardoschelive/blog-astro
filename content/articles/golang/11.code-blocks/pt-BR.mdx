@@ -1,0 +1,133 @@
+---
+title: Blocos de código e escopo
+description: Entenda como Go organiza o código em blocos aninhados e como o escopo de variáveis flui por eles. Aprenda a hierarquia de blocos, as regras de escopo e como o shadowing funciona — e por que deve ser evitado.
+slug: blocos-de-codigo-e-escopo
+publishedAt: '2026-04-09'
+keywords:
+  [
+    golang,
+    blocos de código go,
+    escopo go,
+    escopo de variável go,
+    shadowing go,
+    escopo de bloco go,
+    bloco interno go,
+    bloco externo go,
+  ]
+---
+
+## O que é um bloco
+
+Um bloco é uma sequência de declarações e statements delimitada por chaves `{ }`. Toda vez que você escreve `{`, você abre um novo bloco. Cada `}` o fecha. O código dentro de um bloco é agrupado e, mais importante, variáveis declaradas dentro de um bloco vivem apenas dentro daquele bloco.
+
+Go tem uma hierarquia de blocos que se aninham:
+
+- **Bloco universe** — o bloco mais externo. Identificadores built-in como `len`, `cap`, `make`, `true`, `false` e todos os tipos pré-declarados vivem aqui.
+- **Bloco package** — todos os arquivos de um package compartilham esse bloco. Variáveis, funções e tipos no nível do package são declarados aqui.
+- **Bloco file** — declarações de import pertencem aqui, com escopo para o arquivo individual.
+- **Bloco function** — o corpo de cada função é seu próprio bloco.
+- **Blocos de statement** — os corpos de `if`, `for`, `switch` e `select` abrem um novo bloco cada.
+- **Blocos explícitos** — você pode abrir um bloco em qualquer lugar dentro de uma função usando `{ }` avulso.
+
+## Regras de escopo
+
+A regra fundamental é: **uma variável declarada em um bloco externo é acessível em todos os blocos internos, mas uma variável declarada em um bloco interno não é acessível em nenhum bloco externo**.
+
+```go
+func main() {
+    x := 10 // declarada no bloco da função
+
+    if x > 5 {
+        y := 20 // declarada no bloco do if
+        fmt.Println(x, y) // x é acessível aqui
+    }
+
+    fmt.Println(x) // ok
+    fmt.Println(y) // compile error: undefined: y
+}
+
+```
+
+`x` é declarada no bloco da função, então é visível dentro do bloco `if`. `y` é declarada dentro do bloco `if`, então só existe ali — quando o bloco termina, `y` desaparece.
+
+## Blocos explícitos
+
+Você pode criar um novo bloco em qualquer lugar dentro de uma função com chaves avulsas. Isso é útil quando você quer limitar o tempo de vida de uma variável temporária a uma seção específica do código:
+
+```go
+func process() {
+    result := compute()
+
+    {
+        temp := result * 2
+        fmt.Println(temp)
+    } // temp desaparece aqui
+
+    fmt.Println(result) // ainda acessível
+}
+
+```
+
+Blocos explícitos não são comuns no Go cotidiano, mas são úteis em testes e em código que precisa reutilizar um nome de variável curto para finalidades não relacionadas em diferentes seções da mesma função.
+
+## Shadowing
+
+Shadowing ocorre quando você declara uma variável em um bloco interno com o mesmo nome de uma variável em um bloco externo. A variável interna **oculta** a externa — dentro daquele bloco interno, o nome se refere à variável interna, e a variável externa se torna inacessível:
+
+```go
+x := 10
+fmt.Println(x) // 10
+
+{
+    x := 99 // nova variável, faz shadowing do x externo
+    fmt.Println(x) // 99
+}
+
+fmt.Println(x) // 10 — o x externo permanece inalterado
+```
+
+O `x` externo ainda guarda `10` após o bloco fechar — ele nunca foi modificado, apenas ocultado. Duas variáveis separadas aconteceram de ter o mesmo nome.
+
+### Shadowing com :=
+
+A fonte mais comum de shadowing acidental em Go é o operador de declaração curta `:=` dentro de blocos `if`, `for` ou `switch`. Como `:=` sempre declara uma nova variável no bloco atual, ele pode silenciosamente ocultar uma variável externa quando você pretendia atribuir a ela:
+
+```go
+err := doFirst()
+if err != nil {
+    return err
+}
+
+if result, err := doSecond(); err != nil { // err é uma nova variável aqui
+    fmt.Println(err) // esse err — o de doSecond
+    return err
+}
+
+fmt.Println(err) // esse err — ainda de doFirst, inalterado
+
+```
+
+O `err` dentro do `if` é uma variável completamente nova com escopo para aquele bloco, não o mesmo `err` declarado acima. Essa é uma fonte frequente de bugs onde desenvolvedores acreditam estar verificando ou retornando o `err` externo, mas na verdade estão trabalhando com um diferente.
+
+<Callout type="warning" title="Shadowing não é um compile error">
+  Go não avisa sobre shadowing por padrão. O compilador não vê problema em duas
+  variáveis com o mesmo nome em escopos diferentes. A ferramenta `go vet` e
+  linters como `staticcheck` podem detectá-lo, mas ele não impedirá seu código
+  de compilar e executar — apenas de executar incorretamente.
+</Callout>
+
+### Por que evitar
+
+Shadowing é Go legal, mas reduz a clareza. Um leitor que percorre o código e vê um nome de variável usado antes e depois de um bloco pode não perceber que são na verdade duas variáveis separadas. O valor da variável externa permanece inalterado de uma forma que não é óbvia à primeira vista.
+
+A regra prática: se você pretende modificar uma variável externa de dentro de um bloco, use `=` (atribuição), não `:=` (declaração). Reserve `:=` para variáveis genuinamente novas.
+
+```go
+// Intenção: atualizar o err externo
+err := doFirst()
+if ok := check(); ok {
+    err = doSecond() // atribuição — modifica o err externo
+}
+fmt.Println(err)
+
+```

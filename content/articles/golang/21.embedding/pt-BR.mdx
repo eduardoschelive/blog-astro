@@ -1,0 +1,178 @@
+---
+title: Embedding
+description: Aprenda como Go usa embedding para compor structs, promover fields e métodos, e satisfazer interfaces — sem herança.
+slug: embedding
+publishedAt: '2026-04-23'
+keywords:
+  - golang
+  - embedding
+  - composição
+  - struct embedding
+  - promotion
+  - method promotion
+  - interface satisfaction
+---
+
+Go é uma linguagem orientada a objetos, mas deliberadamente omite uma das características mais reconhecidas da OOP: herança. Não existem base classes, nenhuma keyword `extends`, e nenhuma hierarquia de types para navegar. O que Go oferece no lugar é composição — e um mecanismo chamado embedding que torna a composição quase tão natural quanto herança parece ser.
+
+## O que é embedding
+
+Embedding é uma forma de incluir um type dentro de outro escrevendo apenas o nome do type, sem um nome de field. Quando você faz embedding de um type, todos os seus fields e métodos exportados ficam diretamente acessíveis na struct externa, como se tivessem sido definidos nela:
+
+```go
+type Animal struct {
+    Name string
+}
+
+func (a Animal) Speak() string {
+    return a.Name + " makes a sound"
+}
+
+type Dog struct {
+    Animal
+    Breed string
+}
+
+```
+
+`Animal` está embutido dentro de `Dog`. Não há nome de field — apenas o nome do type. Go cria automaticamente um field chamado `Animal` nos bastidores, mas o efeito visível é que `Dog` passa a ter acesso direto a `Name` e `Speak`:
+
+```go
+dog := Dog{
+    Animal: Animal{Name: "Rex"},
+    Breed:  "Labrador",
+}
+
+fmt.Println(dog.Name)    // Rex — promovido de Animal
+fmt.Println(dog.Speak()) // Rex makes a sound — promovido de Animal
+fmt.Println(dog.Breed)   // Labrador — definido diretamente em Dog
+
+```
+
+Isso é chamado de **promotion**. Os fields e métodos do type embutido são elevados à superfície da struct externa. Você ainda pode acessá-los explicitamente pelo nome do type embutido quando necessário: `dog.Animal.Name`.
+
+## Shadowing de fields e métodos promovidos
+
+A promotion não é incondicional. Se a struct externa define um field ou método com o mesmo nome de um no type embutido, a definição externa tem precedência e a promovida fica em shadowing:
+
+```go
+type Dog struct {
+    Animal
+    Name string // faz shadowing de Animal.Name
+}
+
+dog := Dog{
+    Animal: Animal{Name: "Rex"},
+    Name:   "Buddy",
+}
+
+fmt.Println(dog.Name)        // Buddy — Dog.Name faz shadowing de Animal.Name
+fmt.Println(dog.Animal.Name) // Rex — acessado explicitamente
+
+```
+
+O mesmo se aplica aos métodos. Se `Dog` define seu próprio `Speak`, ele faz shadowing do promovido:
+
+```go
+func (d Dog) Speak() string {
+    return d.Name + " barks"
+}
+
+fmt.Println(dog.Speak())        // Buddy barks — Speak de Dog
+fmt.Println(dog.Animal.Speak()) // Rex makes a sound — Speak de Animal, acessado explicitamente
+
+```
+
+O shadowing é intencional — é o mecanismo que você usa quando a struct externa precisa sobrescrever um método promovido. A versão promovida ainda é acessível; você apenas precisa nomear o type embutido explicitamente.
+
+<Callout type="note" title="Ambiguidade em profundidade igual">
+  Quando dois types embutidos no mesmo nível têm um field ou método com o mesmo
+  nome, Go considera isso ambíguo. O compilador se recusa a compilar qualquer
+  acesso pelo nome promovido. Você deve sempre qualificar o acesso com o type
+  embutido específico — `dog.Animal.Name`, não `dog.Name`.
+</Callout>
+
+## Embedding não é herança
+
+É tentador pensar em embedding como herança, mas os dois types permanecem completamente separados. Um valor `Dog` não é um `Animal`, e Go não permite que você use um onde o outro é esperado:
+
+```go
+func describe(a Animal) {
+    fmt.Println("Animal:", a.Name)
+}
+
+dog := Dog{Animal: Animal{Name: "Rex"}, Breed: "Labrador"}
+
+describe(dog)        // erro de compilação: cannot use Dog as Animal
+describe(dog.Animal) // funciona — você está passando o Animal explicitamente
+
+```
+
+Essa é a diferença fundamental em relação à herança clássica. Em uma linguagem com herança, um `Dog` _é um_ `Animal` e pode ser passado onde quer que um `Animal` seja esperado. Em Go, um `Dog` _tem um_ `Animal`. A relação é de composição, não de substituição.
+
+Essa distinção pode parecer limitante à primeira vista. Na prática, é uma troca deliberada. Ela mantém as relações entre types explícitas, elimina o problema de fragile base class, e força você a ser claro sobre como os types se relacionam entre si. Dois types que compartilham comportamento via embedding continuam sendo dois types independentes.
+
+## Satisfazendo interfaces via embedding
+
+Onde o embedding se torna especialmente poderoso é na satisfação de interfaces. Quando você faz embedding de um type, seus métodos promovidos passam a fazer parte do method set da struct externa. Isso significa que a struct externa satisfaz automaticamente qualquer interface que o type embutido satisfaz:
+
+```go
+type Speaker interface {
+    Speak() string
+}
+
+```
+
+`Animal` satisfaz `Speaker` porque tem o método `Speak`. E porque `Dog` faz embedding de `Animal`, `Speak` é promovido para o method set de `Dog` — portanto, `Dog` também satisfaz `Speaker`, sem nenhum código adicional:
+
+```go
+var s Speaker
+
+s = Animal{Name: "Cat"}
+fmt.Println(s.Speak()) // Cat makes a sound
+
+s = Dog{Animal: Animal{Name: "Rex"}, Breed: "Labrador"}
+fmt.Println(s.Speak()) // Rex makes a sound — promovido de Animal
+
+```
+
+Se `Dog` define seu próprio `Speak`, ele substitui o promovido. `Dog` ainda satisfaz `Speaker`, agora por meio de seu próprio método em vez do promovido:
+
+```go
+func (d Dog) Speak() string {
+    return d.Name + " barks"
+}
+
+s = Dog{Animal: Animal{Name: "Rex"}, Breed: "Labrador"}
+fmt.Println(s.Speak()) // Rex barks — Speak de Dog
+
+```
+
+Esse é o padrão que torna o embedding tão prático. Você compõe uma struct a partir de types focados e auto-suficientes, e as interfaces satisfeitas por cada type embutido naturalmente fluem para a struct contendo. Um type que incorpora um logger, um cache e um reporter de métricas via embedding automaticamente participa de qualquer interface que cada um desses componentes satisfaz — sem necessidade de delegation manual.
+
+<Callout type="note" title="Embedding de interfaces">
+  Você também pode fazer embedding de um type de interface dentro de uma struct.
+  A struct então satisfaz a interface, com cada método entrando em panic por
+  padrão, a menos que você forneça uma implementação concreta para ele. Esse
+  padrão é comum em test doubles e adapters — permite que você implemente apenas
+  os métodos da interface que precisa, deixando o restante em panic caso seja
+  chamado acidentalmente.
+</Callout>
+
+## Embedding vs fields nomeados
+
+Você não precisa fazer embedding de um type para compor structs. Um field nomeado é sempre uma opção:
+
+```go
+type Dog struct {
+    animal Animal // field nomeado, não embedding
+    Breed  string
+}
+
+```
+
+Com um field nomeado, nada é promovido. Para acessar `Name`, você escreve `dog.animal.Name`. Para chamar `Speak`, você escreve `dog.animal.Speak()`. A struct não satisfaz `Speaker` automaticamente.
+
+A escolha depende da intenção. Use um field nomeado quando quiser manter um valor como detalhe de implementação interno — sem expor seus fields ou métodos na superfície da struct externa. Use embedding quando quiser que o comportamento do type interno faça parte da superfície do type externo, seja por conveniência ou para participar de interfaces sem escrever métodos de delegation manualmente.
+
+Embedding é a resposta de Go para a questão que a herança tentava resolver: como reutilizar comportamento entre types? A resposta de Go é ser explícito — componha types, promova o que você precisa, e deixe o sistema de types reforçar a fronteira entre o que um type _é_ e o que ele _tem_.

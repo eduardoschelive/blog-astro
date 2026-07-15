@@ -1,0 +1,181 @@
+---
+title: Identifiers and keywords
+description: Understand Go's naming rules, the 25 reserved keywords, and the predeclared identifiers that come built into every Go program.
+slug: identifiers-and-keywords
+publishedAt: '2026-04-07'
+keywords:
+  [
+    golang,
+    go identifiers,
+    go keywords,
+    go reserved words,
+    go naming conventions,
+    go predeclared identifiers,
+    go exported names,
+    blank identifier,
+    universe block,
+  ]
+---
+
+## What an identifier is
+
+An identifier is the name you give to something in your program — a variable, a constant, a type, a function, a package. Every name you write in Go is an identifier.
+
+The language spec defines exactly what characters are allowed:
+
+- An identifier is formed by one or more Unicode letters and Unicode digits
+- The first character must be a letter — digits are not allowed at the start
+- The underscore `_` counts as a letter
+
+```go
+age         // valid
+_           // valid — the blank identifier
+_count      // valid — underscore is a letter
+user123     // valid — digit after the first character
+café        // valid — Unicode letters are allowed
+123abc      // invalid — starts with a digit
+my-variable // invalid — hyphens are not letters
+```
+
+Go is case-sensitive. `count`, `Count`, and `COUNT` are three distinct identifiers.
+
+### Exported vs unexported
+
+The case of the first letter carries a specific meaning in Go. An identifier that starts with an **uppercase letter** is **exported** — it is visible and accessible from other packages. One that starts with a **lowercase letter** is **unexported** — it is private to the package it is defined in.
+
+```go
+package math
+
+var internalState = 0  // unexported — only visible inside this package
+var Pi = 3.14159       // exported — accessible as math.Pi from anywhere
+```
+
+This is not a convention — it is enforced by the compiler. There are no `public` or `private` keywords in Go. Capitalization is the entire access control mechanism.
+
+### The blank identifier
+
+The underscore on its own — `_` — is a special identifier called the **blank identifier**. It acts as a write-only discard slot: you can assign to it, but you can never read from it.
+
+Its most common use is discarding values you do not need:
+
+```go
+value, _ := strconv.Atoi("42") // discard the error
+```
+
+Go requires that every declared variable is used. The blank identifier lets you satisfy that requirement when a function returns multiple values and you only care about some of them.
+
+## Predeclared identifiers
+
+Go comes with a set of identifiers that are always available in every program without any import. They are defined in the **universe block** — the outermost scope that wraps all Go code.
+
+Unlike keywords, predeclared identifiers are not reserved. You can technically shadow them by declaring your own identifier with the same name. You almost certainly should not — doing so removes access to the original and creates confusing code.
+
+### Types
+
+```
+any        bool       byte       comparable
+complex64  complex128 error      float32
+float64    int        int8       int16
+int32      int64      rune       string
+uint       uint8      uint16     uint32
+uint64     uintptr
+```
+
+You have already seen most of these in the basic types article. `any` is an alias for `interface{}` — the type that accepts any value. `error` is an interface type used throughout Go for error handling. `comparable` is a constraint used in generics.
+
+### Constants
+
+Three predeclared constants exist:
+
+- `true` and `false` — the only values of type `bool`
+- `iota` — the compile-time counter used inside `const` blocks
+
+### The zero value: nil
+
+`nil` is the zero value for pointers, slices, maps, channels, functions, and interfaces. It is not a keyword — it is a predeclared identifier with no type of its own. Its type is determined by context.
+
+```go
+var p *int       // p is nil
+var s []string   // s is nil
+var m map[string]int // m is nil
+```
+
+### Built-in functions
+
+Go provides a set of built-in functions that are always in scope:
+
+| Function  | Purpose                                                   |
+| --------- | --------------------------------------------------------- |
+| `len`     | Length of a string, slice, map, array, or channel         |
+| `cap`     | Capacity of a slice or channel                            |
+| `make`    | Allocate and initialize slices, maps, and channels        |
+| `new`     | Allocate zeroed memory for a type, return a pointer       |
+| `append`  | Append elements to a slice                                |
+| `copy`    | Copy elements between slices                              |
+| `delete`  | Remove a key from a map                                   |
+| `close`   | Close a channel                                           |
+| `complex` | Construct a complex number from real and imaginary parts  |
+| `real`    | Extract the real part of a complex number                 |
+| `imag`    | Extract the imaginary part of a complex number            |
+| `panic`   | Stop normal execution and begin unwinding the stack       |
+| `recover` | Regain control after a panic                              |
+| `print`   | Write to stderr (low-level, for debugging)                |
+| `println` | Write to stderr with a newline (low-level, for debugging) |
+
+<Callout type="note" title="print and println are not fmt.Print">
+  The built-in `print` and `println` write to standard error and are intended
+  for low-level debugging during bootstrap — before the runtime is fully
+  initialized. For any real output, use the `fmt` package: `fmt.Print`,
+  `fmt.Println`, `fmt.Printf`.
+</Callout>
+
+## Keywords
+
+Keywords are words that the Go language itself has claimed. They have fixed meanings built into the compiler and **cannot be used as identifiers** — you cannot name a variable `func` or a type `for`.
+
+Go has exactly **25 keywords**. This small number is deliberate — fewer keywords means a smaller language that is easier to learn and easier to read.
+
+### Declaration and types
+
+These keywords introduce new entities into the program:
+
+| Keyword     | Purpose                                   |
+| ----------- | ----------------------------------------- |
+| `var`       | Declare a variable                        |
+| `const`     | Declare a constant                        |
+| `type`      | Declare a new type or type alias          |
+| `func`      | Declare a function or method              |
+| `struct`    | Define a composite type with named fields |
+| `interface` | Define a set of method signatures         |
+| `map`       | Declare a map type                        |
+| `chan`      | Declare a channel type                    |
+| `package`   | Declare the package a file belongs to     |
+| `import`    | Import packages                           |
+
+### Control flow
+
+These keywords control the order of execution:
+
+| Keyword                       | Purpose                                       |
+| ----------------------------- | --------------------------------------------- |
+| `if` / `else`                 | Conditional branching                         |
+| `for`                         | The only loop construct in Go                 |
+| `range`                       | Iterate over a slice, map, string, or channel |
+| `switch` / `case` / `default` | Multi-branch conditional                      |
+| `break`                       | Exit a loop or switch                         |
+| `continue`                    | Skip to the next loop iteration               |
+| `return`                      | Exit a function, optionally returning values  |
+| `goto`                        | Jump to a labeled statement                   |
+| `fallthrough`                 | Continue into the next case in a switch       |
+
+### Concurrency and deferred execution
+
+| Keyword  | Purpose                                                               |
+| -------- | --------------------------------------------------------------------- |
+| `go`     | Launch a goroutine                                                    |
+| `select` | Wait on multiple channel operations                                   |
+| `defer`  | Schedule a function call to run when the surrounding function returns |
+
+<Callout type="note" title="Go has no while">
+Go does not have a `while` keyword. The `for` loop covers all loop patterns: `for {}` is an infinite loop, `for condition {}` is a while loop, and `for i := 0; i < n; i++ {}` is a classic counted loop.
+</Callout>

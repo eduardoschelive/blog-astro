@@ -1,0 +1,197 @@
+---
+title: Defer
+description: The defer statement schedules a function call to run just before the surrounding function returns. Learn how it works, when arguments are evaluated, and how to use it for cleanup.
+slug: defer
+publishedAt: '2026-04-14'
+keywords:
+  [
+    golang,
+    go defer,
+    go defer statement,
+    go cleanup,
+    go defer lifo,
+    go defer return values,
+  ]
+---
+
+## The cleanup problem
+
+Functions that acquire resources — open files, lock mutexes, establish database connections — must release them when done. The release call should always happen, regardless of how the function exits: normal return, early return due to an error, or an unexpected failure.
+
+Without a dedicated mechanism, ensuring cleanup is manual and error-prone. Every early `return` needs its own matching cleanup call, and adding a new exit path means auditing every existing one.
+
+Go's `defer` statement solves this directly.
+
+## What defer does
+
+A `defer` statement schedules a function call to be executed just before the surrounding function returns. The call is registered immediately when the `defer` line is reached, but the actual execution is postponed:
+
+```go
+func main() {
+    fmt.Println("start")
+    defer fmt.Println("deferred")
+    fmt.Println("end")
+}
+
+```
+
+Output:
+
+```
+start
+end
+deferred
+
+```
+
+The deferred call runs last, after the rest of `main` has finished. From that point it looks simple — but the timing rule has more depth than it first appears.
+
+## When a deferred function executes
+
+A deferred function is guaranteed to run under three conditions:
+
+1. **The surrounding function returns** — a `return` statement anywhere in the function triggers deferred calls before control goes back to the caller.
+2. **Execution reaches the end of the function body** — an implicit return at the closing brace.
+3. **The function panics** — even an unrecovered panic will drain the deferred call stack before unwinding.
+
+All three conditions share the same guarantee: the deferred function runs before the surrounding function hands control back. Whether the function exits cleanly, exits early, or crashes, the deferred calls are not skipped.
+
+## Arguments are evaluated immediately
+
+When `defer` registers a call, it evaluates the function's arguments _right then_, not when the deferred call eventually runs:
+
+```go
+func main() {
+    x := 10
+    defer fmt.Println(x) // captures 10 now
+    x = 20
+    fmt.Println(x)
+}
+
+```
+
+Output:
+
+```
+20
+10
+
+```
+
+`fmt.Println(x)` is registered with `x = 10`. Even though `x` is later changed to `20`, the deferred call still prints `10`. The argument was frozen at the moment the `defer` statement was evaluated.
+
+<Callout type="warning" title="Captured variables vs evaluated arguments">
+Arguments are evaluated eagerly, but variables captured by a closure are not. If you use a closure in a `defer`, the closure sees the variable's value *at the time it runs*, not when it was registered:
+
+```go
+x := 10
+defer func() { fmt.Println(x) }() // prints 20, not 10
+x = 20
+
+```
+
+Choose between the two forms deliberately — they behave differently.
+
+</Callout>
+
+## Multiple defers run in LIFO order
+
+When a function registers more than one deferred call, they run in last-in, first-out order — like a stack. The last `defer` registered runs first:
+
+```go
+func main() {
+    defer fmt.Println("first")
+    defer fmt.Println("second")
+    defer fmt.Println("third")
+}
+
+```
+
+Output:
+
+```
+third
+second
+first
+
+```
+
+LIFO order is intentional. It mirrors the natural structure of resource acquisition: if you open A, then open B, the correct cleanup order is close B first, then close A. Deferred calls naturally respect that nesting.
+
+## Defer and return values
+
+The exact timing of a deferred call is precise: it runs _after_ the return statement sets the result parameters, but _before_ the function returns to its caller. For functions with named return values, this means a deferred function can read and modify the value that will actually be returned:
+
+```go
+func double() (n int) {
+    defer func() {
+        n *= 2
+    }()
+    n = 5
+    return
+}
+
+fmt.Println(double()) // 10
+
+```
+
+The `return` statement sets `n` to `5`. The deferred function then runs, multiplies `n` by `2`, leaving it at `10`. The caller receives `10`, not `5`.
+
+This interaction only applies to named return values. With unnamed return values, the deferred function cannot reach the return value at all:
+
+```go
+func double() int {
+    n := 5
+    defer func() {
+        n *= 2 // modifies the local n, but the return value is already a copy
+    }()
+    return n // returns a copy of n; the defer runs but the copy is unaffected
+}
+
+fmt.Println(double()) // 5
+
+```
+
+The distinction matters when a deferred function is meant to adjust what gets returned — use named return values to make that possible.
+
+## Cleaning up resources
+
+The most common use of `defer` is ensuring a resource is released when the function that opened it exits. The canonical example is a file:
+
+```go
+func processFile(path string) error {
+    f, err := os.Open(path)
+    if err != nil {
+        return err
+    }
+    defer f.Close()
+
+    // read from f...
+    return nil
+}
+
+```
+
+`f.Close()` is registered immediately after the file is opened successfully. No matter how many `return` statements follow — one for each possible error, or the final success return — `f.Close()` runs exactly once, just before `processFile` hands control back.
+
+The same pattern applies to any resource with a paired acquire/release:
+
+```go
+mu.Lock()
+defer mu.Unlock()
+
+rows, err := db.Query(query)
+if err != nil {
+    return err
+}
+defer rows.Close()
+
+```
+
+Each `defer` is placed right next to the acquisition it protects. The code reads in the natural order of operations, and cleanup is guaranteed without littering the function with repeated release calls.
+
+## Defer and panics
+
+A panic in Go unwinds the call stack, running deferred functions along the way. This means `defer` is also the hook for recovering from a panic — a deferred function can call `recover()` to intercept the panic and prevent the program from crashing.
+
+Panic and recovery are covered in their own article. For now, it is enough to know that `defer` is involved: any cleanup registered with `defer` will still run even when a function panics, which makes it the right place to handle both orderly exits and unexpected failures.

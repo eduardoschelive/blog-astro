@@ -1,0 +1,209 @@
+---
+title: Tratando erros em goroutines
+description: Aprenda dois padrões para propagação de erros de goroutines concorrentes — o result struct e o error channel separado — e quando escolher cada um.
+slug: erros-em-goroutines
+publishedAt: '2026-05-09'
+keywords:
+  - golang
+  - goroutines
+  - tratamento de erros
+  - concorrência
+  - channels
+  - result struct
+---
+
+Uma goroutine não pode `return` um erro para quem a chamou. O `go` dispara e esquece: ele inicia a execução em um caminho de agendamento separado, e os valores de retorno da função são descartados. Se algo der errado dentro da goroutine, o erro não tem para onde ir — a menos que você construa um caminho explicitamente.
+
+Isso não é um caso de borda raro. Código concorrente que busca dados, escreve em storage ou chama serviços externos precisa comunicar falhas tanto quanto código sequencial. Ignorar essa realidade leva a **falhas silenciosas**: a goroutine encontra um erro, engole-o, e quem chamou recebe um resultado parcial ou vazio sem nenhuma indicação de que algo deu errado.
+
+Os dois padrões abordados aqui — o result struct e o error channel separado — são as formas padrão de resolver esse problema.
+
+## O anti-padrão: falha silenciosa
+
+Antes de ver as soluções, vale ser concreto sobre o problema. Aqui está um código que parece razoável, mas descarta erros silenciosamente:
+
+```go
+func fetchAll(urls []string) []string {
+    results := make([]string, len(urls))
+    var wg sync.WaitGroup
+
+    for i, url := range urls {
+        wg.Add(1)
+        go func(i int, url string) {
+            defer wg.Done()
+            resp, err := http.Get(url)
+            if err != nil {
+                return // erro é silenciosamente descartado
+            }
+            defer resp.Body.Close()
+            body, _ := io.ReadAll(resp.Body)
+            results[i] = string(body)
+        }(i, url)
+    }
+
+    wg.Wait()
+    return results
+}
+
+```
+
+Se algum `http.Get` falhar, `results[i]` permanece com seu zero value — uma string vazia — e `fetchAll` retorna um slice com lacunas. Quem chama não tem como distinguir uma resposta vazia bem-sucedida de um erro de rede. Essa é a falha silenciosa: a função completa, o caller segue em frente, e o erro desaparece.
+
+<Callout type="warning" title="Resultados parciais parecem sucesso">
+  Funções que retornam resultados parciais em caso de erro são mais difíceis de
+  debugar do que funções que não retornam nada e apresentam um erro claro. Quem
+  chama pode não perceber as lacunas até muito depois, ou pode agir com base na
+  saída corrompida. Propagação explícita de erros é sempre preferível.
+</Callout>
+
+## Padrão 1: o result struct
+
+A solução mais limpa para a maioria dos casos é definir um struct que contém tanto o resultado quanto o erro, e então enviar valores desse tipo por um único channel. A goroutine sempre envia exatamente um valor — seja um resultado com erro nil, seja um resultado zerado com um erro não-nil — e quem chama percorre o channel para coletá-los.
+
+```go
+type fetchResult struct {
+    url  string
+    body []byte
+    err  error
+}
+
+func fetchAll(ctx context.Context, urls []string) []fetchResult {
+    ch := make(chan fetchResult, len(urls))
+
+    for _, url := range urls {
+        go func(url string) {
+            req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+            if err != nil {
+                ch <- fetchResult{url: url, err: err}
+                return
+            }
+            resp, err := http.DefaultClient.Do(req)
+            if err != nil {
+                ch <- fetchResult{url: url, err: err}
+                return
+            }
+            defer resp.Body.Close()
+            body, err := io.ReadAll(resp.Body)
+            ch <- fetchResult{url: url, body: body, err: err}
+        }(url)
+    }
+
+    results := make([]fetchResult, 0, len(urls))
+    for range urls {
+        results = append(results, <-ch)
+    }
+    return results
+}
+
+```
+
+O channel é buffered com `len(urls)`, então cada goroutine pode enviar seu resultado sem bloquear, independentemente de quando as outras terminam. O loop `for range urls` coleta exatamente a mesma quantidade de valores que foram enviados — um por goroutine — então o channel é completamente drenado e a função retorna somente após todas as goroutines terem terminado.
+
+Quem chama então itera sobre os resultados e trata sucessos e falhas separadamente:
+
+```go
+results := fetchAll(ctx, urls)
+for _, r := range results {
+    if r.err != nil {
+        log.Printf("falha ao buscar %s: %v", r.url, r.err)
+        continue
+    }
+    process(r.url, r.body)
+}
+
+```
+
+É direto: um channel, um tipo, um loop. O resultado de cada goroutine é contabilizado, e nem sucesso nem falha são implícitos.
+
+<Callout type="note" title="Sempre inclua contexto identificador no result">
+  Quando múltiplas goroutines rodam concorrentemente, os resultados chegam em
+  ordem arbitrária. Incluir a URL (ou um índice, ou um ID) no result struct
+  permite ao caller associar cada resultado à sua entrada sem depender de
+  ordenação.
+</Callout>
+
+## Padrão 2: error channel separado
+
+Uma alternativa é usar dois channels — um para resultados e outro para erros — e fazer o caller fazer `select` sobre ambos. Esse padrão aparece quando o tipo do resultado já está definido e você não quer envolvê-lo em um novo struct, ou quando a lógica de tratamento de erros é genuinamente separada da lógica de processamento dos resultados.
+
+```go
+func fetchAll(ctx context.Context, urls []string) (<-chan []byte, <-chan error) {
+    results := make(chan []byte, len(urls))
+    errs := make(chan error, len(urls))
+
+    for _, url := range urls {
+        go func(url string) {
+            req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+            if err != nil {
+                errs <- err
+                return
+            }
+            resp, err := http.DefaultClient.Do(req)
+            if err != nil {
+                errs <- err
+                return
+            }
+            defer resp.Body.Close()
+            body, err := io.ReadAll(resp.Body)
+            if err != nil {
+                errs <- err
+                return
+            }
+            results <- body
+        }(url)
+    }
+
+    return results, errs
+}
+
+```
+
+Quem chama precisa drenar os dois channels. Uma abordagem comum é coletar um número conhecido de respostas usando um contador:
+
+```go
+results, errs := fetchAll(ctx, urls)
+
+for i := 0; i < len(urls); i++ {
+    select {
+    case body := <-results:
+        process(body)
+    case err := <-errs:
+        log.Printf("erro ao buscar: %v", err)
+    }
+}
+
+```
+
+O `select` alterna entre os dois channels, processando o que estiver pronto primeiro. Após `len(urls)` iterações, todas as goroutines enviaram exatamente uma mensagem para um dos dois channels, e ambos estão completamente drenados.
+
+<Callout
+  type="warning"
+  title="Cada goroutine deve enviar para exatamente um channel"
+>
+  No padrão de channels separados, cada goroutine deve enviar um valor para o
+  channel de resultados ou para o channel de erros — nunca para ambos, e nunca
+  para nenhum. Se uma goroutine puder sair sem enviar nada, o loop coletor vai
+  bloquear indefinidamente aguardando um valor que nunca vem.
+</Callout>
+
+## Comparando os dois padrões
+
+Ambos os padrões propagam erros corretamente. A escolha entre eles é principalmente sobre clareza de API e como quem chama quer consumir a saída.
+
+|                                | Result struct                       | Channels separados           |
+| ------------------------------ | ----------------------------------- | ---------------------------- |
+| **Channels**                   | Um                                  | Dois                         |
+| **Acoplamento resultado–erro** | Sempre juntos                       | Desacoplados                 |
+| **Loop do caller**             | `range` ou `for` único              | `select` sobre dois channels |
+| **Tipo retornado**             | Struct personalizado                | Tipos existentes inalterados |
+| **Ordenação**                  | Arbitrária, mas explícita via campo | Arbitrária, contexto perdido |
+
+O result struct é geralmente o melhor padrão padrão. É mais difícil de usar incorretamente: quem chama recebe um valor que contém tanto o resultado quanto o contexto daquele resultado. Não há como acidentalmente drenar apenas um channel e deixar goroutines bloqueadas.
+
+O error channel separado faz sentido quando:
+
+- O tipo do resultado já está definido e adicionar um struct wrapper poluiria a API
+- Erros e resultados são genuinamente processados por partes diferentes do código
+- Você está construindo um pipeline onde erros convergem de múltiplos estágios e um error channel dedicado se encaixa naturalmente no design
+
+Em ambos os casos, a disciplina-chave é a mesma: **toda goroutine que pode falhar deve ter um caminho garantido para que essa falha chegue ao caller**. Falhas silenciosas não são um problema exclusivo do Go — elas aparecem sempre que concorrência se combina com erros ignorados — mas o modelo de channels do Go oferece as ferramentas para tornar cada falha explícita.

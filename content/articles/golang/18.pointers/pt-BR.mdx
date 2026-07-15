@@ -1,0 +1,190 @@
+---
+title: Pointers
+description: Aprenda como os pointers funcionam em Go, quando usá-los para mutabilidade e performance, e como o garbage collector gerencia a memória heap.
+slug: ponteiros
+publishedAt: '2026-04-22'
+keywords:
+  - golang
+  - pointers
+  - mutabilidade
+  - memória
+  - garbage collection
+  - nil
+  - performance
+---
+
+Na maior parte do tempo em Go, os valores fluem pelo programa sendo copiados — você passa um `int` para uma função, a função recebe sua própria cópia, e o original permanece intocado. Essa simplicidade é intencional. Mas há situações em que copiar não é o que você quer: uma função precisa modificar a variável do chamador, sinalizar que um valor está ausente, ou evitar duplicar um grande bloco de memória. Os pointers resolvem esses três problemas. Entender quando e por que utilizá-los é uma das decisões mais importantes ao programar em Go.
+
+## Mutabilidade
+
+Antes de apresentar os pointers, vale entender como Go trata a mutabilidade. Toda variável em Go é mutable ou immutable, e a forma de declaração determina qual das duas você obtém.
+
+Uma variável **mutable** pode ter seu valor alterado a qualquer momento após ser declarada. Dentro de uma função, uma declaração com `var` (ou a declaração curta com `:=`) cria uma variável mutable:
+
+```go
+var score int = 10
+score = 20 // permitido — score é mutable
+```
+
+Uma variável **immutable**, declarada com `const`, não pode ser alterada após ser definida. O compilador aplica essa restrição em tempo de compilação:
+
+```go
+const maxRetries = 3
+maxRetries = 5 // erro de compilação — não é possível atribuir a maxRetries
+```
+
+`const` é para valores fixados por design — constantes matemáticas, limites de configuração, valores enumerados. `var` (ou `:=`) é para tudo que precisa mudar ao longo do tempo.
+
+<Callout type="note" title="const e var no nível do package">
+  `const` e `var` podem aparecer no nível do package, não apenas dentro de
+  funções. Um `var` no nível do package é mutable e compartilhado por todo o
+  código do package, o que o torna uma forma de estado global mutable — algo a
+  ser usado com cautela.
+</Callout>
+
+A distinção entre mutable e immutable importa porque ela molda como você raciocina sobre um programa. Quando um valor não pode mudar, você não precisa rastrear quem poderia modificá-lo. Quando pode, você precisa — e é exatamente aí que os pointers entram em cena.
+
+## Mutabilidade e pointers
+
+As funções em Go recebem argumentos como cópias. Se você quer que uma função modifique uma variável declarada no chamador, não é possível passar o valor em si — a função estaria modificando sua própria cópia e o chamador não veria nenhuma alteração. Em vez disso, você passa um **pointer**: o endereço de memória da variável.
+
+O operador `&` obtém o endereço de uma variável. O operador `*`, colocado à frente de um pointer, o dereferencia — ele segue o endereço e retorna o valor armazenado ali. Um tipo escrito como `*T` é um pointer para um valor do tipo `T`.
+
+```go
+func increment(n *int) {
+    *n = *n + 1
+}
+
+func main() {
+    count := 0
+    increment(&count)
+    fmt.Println(count) // 1
+}
+```
+
+`increment` recebe o endereço de `count`. Dentro da função, `*n` lê o valor atual naquele endereço, soma um e escreve o resultado de volta. Quando `main` imprime `count`, a alteração é visível porque tanto `main` quanto `increment` referenciam a mesma posição de memória.
+
+Esse é o caso de uso fundamental para pointers em Go: dar a uma função a capacidade de modificar uma variável que existe em outro lugar.
+
+<Callout type="warning" title="Documente funções que modificam seus argumentos">
+  Uma função que aceita um pointer e modifica o valor apontado não é óbvia no
+  ponto de chamada — `increment(&count)` parece quase igual a qualquer outra
+  chamada. Sempre documente se uma função modifica seus argumentos do tipo
+  pointer, e prefira convenções de nomenclatura que tornem a intenção clara.
+  Efeitos colaterais não documentados por meio de pointers são uma fonte comum
+  de bugs.
+</Callout>
+
+## Indicando a ausência de um valor
+
+Ocasionalmente, uma função precisa comunicar não apenas "aqui está o resultado", mas também "não há resultado". Um zero value nem sempre é suficiente para isso — se uma função retorna `0` para um `int`, o chamador não consegue distinguir se a resposta foi genuinamente zero ou se nenhuma resposta existe.
+
+Os pointers resolvem isso de forma elegante porque um pointer pode ser `nil`. Quando uma função retorna `*int` em vez de `int`, ela pode retornar `nil` para sinalizar ausência e um pointer não-nulo para sinalizar presença:
+
+```go
+func findUserAge(name string, users map[string]int) *int {
+    age, ok := users[name]
+    if !ok {
+        return nil
+    }
+    return &age
+}
+
+func main() {
+    users := map[string]int{"Alice": 30}
+
+    age := findUserAge("Alice", users)
+    if age != nil {
+        fmt.Println("Age:", *age) // Age: 30
+    }
+
+    missing := findUserAge("Bob", users)
+    if missing == nil {
+        fmt.Println("User not found")
+    }
+}
+```
+
+O chamador verifica se o pointer é `nil` antes de dereferenciar. Esse padrão aparece em toda a biblioteca padrão do Go e na maioria do código Go real. É especialmente comum em funções que retornam tanto um valor quanto um error, onde um pointer `nil` no lado do valor deixa explícito que nenhum resultado significativo foi produzido.
+
+<Callout type="warning" title="Sempre verifique nil antes de dereferenciar">
+  Dereferenciar um pointer `nil` causa um panic em tempo de execução. Sempre que
+  você receber um pointer que pode ser `nil`, verifique antes de usá-lo. Ignorar
+  essa verificação é uma das fontes mais comuns de crashes em programas Go.
+</Callout>
+
+## Performance e structs grandes
+
+Toda vez que você passa um valor para uma função, Go o copia. Para tipos pequenos — integers, booleans, structs com poucos campos — o custo dessa cópia é insignificante. Mas para structs grandes com muitos campos, a cópia pode se tornar mensurável, especialmente se a função for chamada com frequência em um loop apertado.
+
+Passar um pointer em vez do valor evita a cópia: a função recebe um único endereço de memória (tipicamente 8 bytes em sistemas 64-bit), independentemente do tamanho da struct apontada.
+
+```go
+type Report struct {
+    Title   string
+    Rows    [10000]float64
+    Summary string
+}
+
+// Copia a struct Report inteira a cada chamada — potencialmente custoso.
+func processValue(r Report) {
+    fmt.Println(r.Title)
+}
+
+// Passa apenas um pointer — nenhuma cópia da struct.
+func processPointer(r *Report) {
+    fmt.Println(r.Title)
+}
+```
+
+Dito isso, a orientação em Go é conservadora: **prefira passar valores por padrão**. Semântica de pointer introduz aliasing — múltiplas partes do programa mantendo uma referência para a mesma memória — o que torna o código mais difícil de raciocinar e testar. Recorra a um pointer somente quando você mediu ou tem forte razão para esperar um problema de performance, ou quando a struct é grande o suficiente para que o custo seja evidente.
+
+<Callout type="note" title="Deixe os linters guiarem você">
+  Ferramentas como `go vet` e linters de terceiros (como `revive` ou
+  `staticcheck`) podem sinalizar funções que passam structs grandes por valor
+  quando um pointer seria mais adequado. Executar um linter como parte do seu
+  workflow elimina a necessidade de adivinhar essa decisão.
+</Callout>
+
+## Go tem garbage collection
+
+Quando você obtém o endereço de uma variável local, está dizendo ao runtime que esse valor pode sobreviver à função que o criou. Go responde alocando a variável na **heap** em vez da stack. O garbage collector é responsável por recuperar essa memória assim que não existirem mais pointers apontando para ela.
+
+Essa é uma das funcionalidades mais importantes do Go em termos de qualidade de vida: você não precisa liberar memória heap manualmente. Não há `free()`, nenhum destrutor, nenhum reference counting para gerenciar. O garbage collector cuida disso.
+
+```go
+func newCounter() *int {
+    n := 0       // n escapa para a heap porque seu endereço é retornado
+    return &n
+}
+
+func main() {
+    c := newCounter()
+    *c++
+    fmt.Println(*c) // 1
+}
+```
+
+Mesmo que `n` seja uma variável local dentro de `newCounter`, retornar `&n` é seguro. A análise de escape do Go detecta que `n` escapa da função e o coloca na heap automaticamente.
+
+<Callout type="warning" title="Atenção à pressão sobre o garbage collector">
+  Embora Go gerencie a memória por você, criar muitas alocações de curta duração
+  na heap gera pressão sobre o garbage collector. O GC roda de forma
+  concorrente, mas ciclos de coleta frequentes ainda consomem tempo de CPU e
+  podem introduzir latência em código sensível a performance. O uso
+  desnecessário de pointers — quando um valor resolveria — é um contribuidor
+  comum para a pressão no GC. Meça antes de otimizar, mas tenha o padrão em
+  mente.
+</Callout>
+
+## Juntando tudo
+
+Os pointers em Go servem a três propósitos distintos, e cada um tem um caso de uso natural:
+
+| Propósito         | Quando utilizá-lo                                                  |
+| ----------------- | ------------------------------------------------------------------ |
+| Mutabilidade      | Uma função precisa modificar uma variável no chamador              |
+| Ausência de valor | Uma função precisa sinalizar "nenhum resultado" via `nil`          |
+| Performance       | Uma struct é grande o suficiente para que copiá-la seja mensurável |
+
+Fora esses três cenários, passar valores é quase sempre o padrão correto. Valores são mais simples de raciocinar, mais fáceis de testar e não exigem verificações de `nil`. Deixe a necessidade surgir antes de adicionar indireção via pointer — e quando ela surgir, documente o que sua função faz com a memória que recebe.

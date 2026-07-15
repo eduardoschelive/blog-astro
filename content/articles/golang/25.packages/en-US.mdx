@@ -1,0 +1,191 @@
+---
+title: Packages
+description: Learn how Go packages organize code, how exported identifiers work, how the init function runs, and the idioms for naming, aliases, and side-effect imports.
+slug: packages
+publishedAt: '2026-04-27'
+keywords:
+  - golang
+  - packages
+  - exports
+  - imports
+  - init function
+  - package naming
+  - blank import
+  - dot import
+---
+
+Go organizes code into packages. A package is a collection of source files in the same directory that are compiled together as a single unit. Every piece of Go code belongs to a package, every import refers to a package, and the package system is what controls what is shared between files, what is visible to the outside world, and how large codebases stay navigable without becoming tangled.
+
+## The package declaration
+
+Every Go source file begins with a package declaration:
+
+```go
+package geometry
+
+```
+
+All files in the same directory must share the same package name. The package name is the identifier that callers use to refer to the package's exported contents: `geometry.Area`, `geometry.Point`.
+
+There is one special package name: `main`. A package named `main` that defines a `main()` function is the entry point for an executable program. All other packages are libraries — they export functionality but cannot be run directly.
+
+## Exported and unexported identifiers
+
+Go has no `public`, `private`, or `protected` keywords. Visibility is determined entirely by the case of the first letter of an identifier:
+
+- Identifiers starting with an **uppercase letter** are exported — visible to any package that imports this one
+- Identifiers starting with a **lowercase letter** are unexported — visible only within the same package
+
+```go
+package geometry
+
+type Point struct {
+    X float64 // exported: accessible from other packages
+    Y float64 // exported
+}
+
+type circle struct { // unexported: only usable within package geometry
+    center Point
+    radius float64
+}
+
+func Area(r float64) float64  { return 3.14159 * r * r } // exported
+func validate(r float64) bool { return r > 0 }           // unexported
+
+```
+
+This rule applies uniformly to types, functions, variables, constants, struct fields, and interface methods. A struct can be exported while keeping some of its fields unexported, giving precise control over what callers can read or set.
+
+## Importing packages
+
+To use a package, import it by its import path — the module path plus the relative directory path of the package within the module:
+
+```go
+import (
+    "fmt"                               // standard library
+    "math/rand"                         // standard library sub-package
+    "github.com/yourname/myapp/server"  // package from your module
+)
+
+```
+
+The Go compiler does not allow unused imports. Importing a package and never using it is a compile error, not a warning. This rule keeps the import section of every file an accurate record of its actual dependencies — nothing more, nothing less.
+
+Each source file manages its own imports. There is no shared or package-level import that applies automatically to other files in the same package.
+
+<Callout type="note" title="The compiler enforces import discipline">
+  In most languages, unused imports are a lint warning at best. In Go, they are
+  a hard compile error. This forces every file to declare exactly what it
+  depends on, which pays off at scale: reading any Go file, you know immediately
+  and exactly what external code it uses.
+</Callout>
+
+## Package naming
+
+The directory containing a package should share the package name. If the directory is named `server/`, the declaration inside should be `package server`. This makes the location of any package predictable.
+
+```
+myapp/
+├── geometry/
+│   ├── point.go  // package geometry
+│   └── area.go   // package geometry
+└── server/
+    └── http.go   // package server
+
+```
+
+Package names should be short, lowercase, and descriptive of the functionality the package offers. Because callers write the package name before every exported identifier, the name and identifier together should read naturally: `json.Marshal`, `http.Get`, `rand.Intn`.
+
+Avoid names like `util`, `helper`, `common`, or `misc`. A package named `util` tells a caller nothing about what it does. The idiomatic approach is multiple well-named packages — `stringutil`, `httputil`, `timeutil` — rather than one catch-all package with an ambiguous name. Ambiguous names also tend to accumulate unrelated functionality over time, which makes packages harder to maintain and understand.
+
+## Import aliases
+
+When two packages share the same name, or when a package name collides with a local identifier, an alias resolves the conflict:
+
+```go
+import (
+    "crypto/rand"
+    mrand "math/rand"
+)
+
+func main() {
+    b := make([]byte, 16)
+    crypto_rand.Read(b)  // crypto/rand
+    n := mrand.Intn(100) // math/rand via alias
+}
+
+```
+
+The alias replaces the package name for the entire scope of the file. Without the alias, both imports would be referred to as `rand`, causing a compile error.
+
+## Dot import
+
+A dot import brings all exported identifiers from a package directly into the current file's namespace, removing the need for a prefix:
+
+```go
+import . "fmt"
+
+func main() {
+    Println("hello") // no fmt. prefix required
+}
+
+```
+
+Dot imports are rarely used in production code. When reading a file that uses one, it becomes impossible to tell at a glance whether an identifier like `Println` is a local function or an import. They occasionally appear in test files to reduce verbosity, but even there they are uncommon.
+
+## The init function
+
+`init` is a reserved function name in Go. Like `main`, it accepts no arguments and returns nothing:
+
+```go
+func init() {
+    // setup code
+}
+
+```
+
+When a package is imported, its `init` functions run automatically before any code in the importing package executes. In a program, all `init` functions across all imported packages complete before `main()` starts.
+
+A single file can define multiple `init` functions, and multiple files in the same package can each define their own:
+
+```go
+// metrics.go
+func init() {
+    prometheus.MustRegister(requestCounter)
+}
+
+// db.go
+func init() {
+    sql.Register("postgres", &Driver{})
+}
+
+```
+
+Each `init` runs exactly once per program execution, regardless of how many packages import the package that contains it.
+
+Common uses include initializing resources that require more than a simple variable declaration, registering a package with a larger system, and setting up global state that must be ready before any other code runs — compiling regular expressions, opening a connection pool, loading embedded configuration.
+
+<Callout type="warning" title="Do not rely on init execution order">
+  When a package has multiple `init` functions across several files, Go does not
+  guarantee the order in which those files are processed. Code that depends on
+  one `init` having run before another is fragile. If two initializations depend
+  on each other, sequence them explicitly inside a single `init` function.
+</Callout>
+
+## Blank import
+
+Importing a package with `_` discards the package name entirely but still executes the package's `init()` functions:
+
+```go
+import _ "github.com/lib/pq" // registers the Postgres driver
+
+```
+
+This is the side-effect import pattern. Some packages need to register themselves with a larger system at startup — database drivers register with `database/sql`, image format decoders register with the `image` package, HTTP handlers register with the default mux. They do this registration inside `init()`. Importing them with `_` triggers the initialization without introducing any of the package's identifiers into the namespace.
+
+<Callout type="note" title="Blank imports are intentional, not accidental">
+  A blank import is a deliberate signal: "I need this package's side effects,
+  but I do not call any of its functions directly." It is different from
+  accidentally importing something you forgot to use — Go would reject that with
+  a compile error. The `_` makes the intent explicit.
+</Callout>

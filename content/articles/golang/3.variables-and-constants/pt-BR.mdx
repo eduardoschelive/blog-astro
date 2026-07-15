@@ -1,0 +1,248 @@
+---
+title: Variáveis e constantes
+description: Aprenda como Go nomeia valores — a keyword var, short declarations e constantes. Entenda inferência de tipo, zero values e a diferença entre bindings mutáveis e imutáveis.
+slug: variaveis-e-constantes
+publishedAt: '2026-04-07'
+keywords:
+  [
+    golang,
+    variáveis go,
+    constantes go,
+    keyword var,
+    keyword const,
+    short declaration,
+    inferência de tipo,
+    zero values,
+    iota,
+    untyped constants,
+    variáveis package-level,
+    declaração go,
+  ]
+---
+
+## Nomeando valores
+
+Todo programa trabalha com valores. Alguns desses valores mudam enquanto o programa executa — um contador que incrementa, um status que passa de pendente para completo. Outros nunca mudam — um número máximo de tentativas, o valor de pi, o nome de uma aplicação.
+
+Go oferece duas ferramentas para nomear valores: **variáveis** para coisas que mudam, e **constantes** para coisas que não mudam.
+
+## Variáveis
+
+Uma variável é um espaço de armazenamento com nome. Seu valor pode ser reatribuído a qualquer momento durante a execução do programa.
+
+### A keyword var
+
+A forma mais explícita de declarar uma variável é com a keyword `var`, seguida do nome, do tipo e, opcionalmente, de um valor inicial:
+
+```go
+var age int          // declarada com zero value: 0
+var name string      // zero value: ""
+var active bool      // zero value: false
+var score int = 100  // declarada com valor explícito
+```
+
+Quando você declara uma variável sem atribuir um valor, Go a inicializa com seu **zero value** — o valor padrão para aquele tipo. Todo tipo tem um: `0` para inteiros, `0.0` para floats, `false` para booleanos, `""` para strings. Não existe variável não inicializada em Go.
+
+Se você fornecer um valor inicial, Go consegue inferir o tipo — não é necessário declará-lo explicitamente:
+
+```go
+var age = 30           // inferido como int
+var greeting = "Hello" // inferido como string
+```
+
+<Callout type="note" title="Inferência usa o tipo padrão">
+  Quando Go infere um tipo a partir de um literal sem tipo, ele usa o tipo
+  padrão para aquele tipo de valor. Um inteiro literal como `42` tem padrão
+  `int`. Um float literal como `3.14` tem padrão `float64`. Se você precisar de
+  um tipo específico, declare explicitamente: `var x float32 = 3.14`.
+</Callout>
+
+### Short variable declaration
+
+Dentro de uma função, você pode omitir tanto o `var` quanto o tipo usando o operador `:=`. Ele declara e inicializa a variável em um único passo:
+
+```go
+age := 30
+greeting := "Hello"
+isActive := true
+```
+
+O tipo é sempre inferido do lado direito. Short declarations são a forma mais comum de declaração de variável em Go — são concisas e mantêm as funções legíveis.
+
+Uma restrição importante: **`:=` não pode ser usado em package level**. Ele só é válido dentro de funções.
+
+```go
+package main
+
+counter := 0 // compile error: não está dentro de uma função
+
+func main() {
+    counter := 0 // correto
+}
+```
+
+### Reatribuição e reutilização do `:=`
+
+`:=` exige que ao menos uma variável do lado esquerdo seja nova. Isso permite reutilizá-lo ao declarar uma nova variável junto com uma já existente:
+
+```go
+x := 10
+x, y := 20, 30 // válido: y é nova, x é reatribuído
+```
+
+Se todas as variáveis do lado esquerdo já existem, use `=` para reatribuição:
+
+```go
+x := 10
+x = 20 // reatribuição, não uma nova declaração
+```
+
+### Múltiplas variáveis
+
+Você pode declarar múltiplas variáveis em uma única linha:
+
+```go
+var x, y, z int = 1, 2, 3
+a, b := "hello", true
+```
+
+Ou agrupá-las em um bloco `var` — comum para declarações relacionadas no topo de uma função ou em package level:
+
+```go
+var (
+    host    = "localhost"
+    port    = 8080
+    timeout = 30
+)
+```
+
+### Package-level vs function-level
+
+Variáveis podem ser declaradas em dois escopos:
+
+Variáveis **package-level** são declaradas fora de qualquer função. Elas são acessíveis em todo o package e inicializadas antes de `main` executar.
+
+Variáveis **function-level** são declaradas dentro de uma função. Elas existem apenas durante aquela chamada de função e são invisíveis fora dela.
+
+```go
+package main
+
+var serverHost = "localhost" // package-level
+
+func connect() {
+    port := 5432 // function-level
+    fmt.Println(serverHost, port)
+}
+```
+
+<Callout
+  type="warning"
+  title="Variáveis não utilizadas causam erro de compilação"
+>
+  Go se recusa a compilar um programa que declara uma variável local sem usá-la.
+  Isso é intencional — evita código morto e mantém as funções limpas. Variáveis
+  package-level são isentas dessa regra.
+</Callout>
+
+## Constantes
+
+Uma constante é um valor com nome que não pode mudar após ser definido. Ela não é uma variável com proteção — é avaliada inteiramente em tempo de compilação e nunca ocupa um espaço de memória em runtime.
+
+### A keyword const
+
+Constantes são declaradas com `const`:
+
+```go
+const maxRetries = 3
+const appName = "MyApp"
+const pi = 3.14159265358979
+```
+
+Assim como variáveis, constantes suportam declarações agrupadas:
+
+```go
+const (
+    maxRetries = 3
+    timeout    = 30
+    appName    = "MyApp"
+)
+```
+
+### O que pode ser uma constante
+
+Nem todo valor se qualifica como constante. O compilador precisa ser capaz de determinar seu valor antes de o programa executar. Valores válidos incluem:
+
+- Literais booleanos: `true`, `false`
+- Literais inteiros, float e complex
+- Literais string e rune
+- Expressões avaliáveis em tempo de compilação: `1 << 8`, `2 * 3.14`, `1 < 2`
+- Chamadas a certas funções built-in: `len`, `cap`, `real`, `imag`, `complex`
+
+```go
+const bufferSize = 1 << 8  // 256
+const isDebug = false
+const greeting = "Hello"
+const alwaysTrue = 1 < 2   // avaliado em compile time — true
+```
+
+Chamadas a funções que produzem valores em runtime — como ler um arquivo ou chamar `time.Now()` — não podem ser usadas como constantes.
+
+### Typed e untyped constants
+
+Constantes em Go existem em duas formas: **typed** e **untyped**.
+
+Uma **typed constant** carrega um tipo explícito e só pode ser atribuída diretamente a uma variável daquele mesmo tipo:
+
+```go
+const maxRetries int = 3
+
+var x int   = maxRetries // correto
+var y int64 = maxRetries // compile error: não pode usar maxRetries como int64
+```
+
+Uma **untyped constant** não tem tipo fixo. Ela carrega um kind (inteiro, float, string ou booleano) e se adapta ao tipo esperado no ponto de uso:
+
+```go
+const maxRetries = 3 // untyped integer constant
+
+var x int     = maxRetries // correto
+var y int64   = maxRetries // correto — adapta para int64
+var z float64 = maxRetries // correto — adapta para float64
+```
+
+<Callout type="note" title="Prefira untyped constants">
+  Deixe constantes sem tipo a menos que você tenha uma razão específica para
+  restringi-las. Untyped constants são mais flexíveis — funcionam onde qualquer
+  kind compatível é esperado, sem conversão explícita.
+</Callout>
+
+### iota
+
+Quando você precisa de uma sequência de constantes inteiras relacionadas, Go fornece o `iota` — um contador que começa em zero e incrementa em um a cada entrada no bloco:
+
+```go
+const (
+    Sunday    = iota // 0
+    Monday           // 1
+    Tuesday          // 2
+    Wednesday        // 3
+    Thursday         // 4
+    Friday           // 5
+    Saturday         // 6
+)
+```
+
+`iota` é resetado para zero no início de cada novo bloco `const`. É a forma idiomática de definir enumerações em Go.
+
+## Variáveis vs constantes
+
+Tanto variáveis quanto constantes podem ser declaradas em package level ou function level, e ambas suportam declarações agrupadas com chaves. As diferenças são mais significativas do que parecem:
+
+|                    | `var`                | `const`      |
+| ------------------ | -------------------- | ------------ |
+| Valor pode mudar   | sim                  | não          |
+| Avaliada em        | runtime              | compile time |
+| Short form (`:=`)  | sim (apenas funções) | não          |
+| Pode ficar sem uso | não (apenas local)   | sim          |
+
+A regra sobre variáveis não utilizadas merece destaque: uma variável local declarada mas nunca referenciada é um erro de compilação. Constantes são sempre isentas — podem existir puramente para documentação ou uso futuro sem que o compilador objete.

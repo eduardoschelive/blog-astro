@@ -1,0 +1,314 @@
+---
+title: Linked Lists
+description: Descubra como Linked Lists trocam acesso instantâneo por insertion flexível. Aprenda estrutura de nodes, manipulação de pointers, variantes singly e doubly, e quando escolher Linked Lists em vez de arrays.
+slug: linked-lists
+publishedAt: '2026-03-03'
+keywords:
+  [
+    linked lists,
+    data structures,
+    nodes,
+    pointers,
+    singly linked list,
+    doubly linked list,
+    circular linked list,
+    dynamic memory,
+    traversal,
+    insertion,
+    deletion,
+    time complexity,
+    C programming,
+  ]
+---
+
+## O que é uma Linked List
+
+Uma Linked List é uma cadeia de **nodes** espalhados pela memória, onde cada node guarda um valor e um pointer para o próximo node. Ao contrário dos arrays, os elementos não são vizinhos — eles podem viver em qualquer lugar da RAM. O que os mantém juntos é a cadeia de pointers.
+
+```c
+struct Node {
+    int value;
+    struct Node *next;
+};
+```
+
+São dois campos: o dado que importa, e o endereço de quem vem depois.
+
+<Example title="A analogia da caça ao tesouro">
+
+Imagine uma caça ao tesouro onde cada pista não te dá o tesouro diretamente — ela te diz onde encontrar a próxima pista. Você começa em um local conhecido (o "head"), lê a pista, e vai para onde ela aponta. Você continua seguindo pistas até encontrar uma que diga "termine aqui" — isso é o `NULL`.
+
+Uma Linked List funciona exatamente assim. Você começa no pointer de head, segue a cadeia de pointers `next`, e para quando chega ao `NULL`.
+
+</Example>
+
+<MemoryVisualization
+  title="RAM — nodes espalhados em qualquer lugar:"
+  type="linked"
+  blocks={[
+    { address: '0x1000', value: 42, label: 'head → next: 0x2F40' },
+    { address: '0x2F40', value: 17, label: 'next: 0x0A80' },
+    { address: '0x0A80', value: 8, label: 'next: NULL' },
+  ]}
+>
+  <span className="text-danger">head:</span>{' '}
+  <span className="text-success">42 → 17 → 8 → NULL</span>
+</MemoryVisualization>
+
+## O problema que arrays não conseguiam resolver
+
+No [artigo sobre arrays](/categorias/estruturas-de-dados/artigos/arrays), vimos que inserir no meio de um array força todos os elementos seguintes a deslocar para a direita. Para um milhão de elementos, isso são um milhão de movimentos — <Tooltip title="Tempo linear" content="O(n) — o trabalho cresce proporcionalmente com o número de elementos">O(n)</Tooltip> para o que parece ser uma operação simples.
+
+Linked Lists existem exatamente para resolver isso. Em vez de mover dados, você apenas redireciona pointers.
+
+<Example title="Inserindo sem deslocar">
+
+Imagine uma fila de pessoas onde cada pessoa segura a mão da próxima. Para adicionar alguém no meio, você não embaralha todos — você apenas solta duas mãos e forma duas novas. O recém-chegado segura a pessoa à sua frente, e a pessoa atrás segura o recém-chegado.
+
+Isso é cirurgia de pointers. Ninguém se move. A lista se reorganiza mudando quais endereços são armazenados, não movendo dados.
+
+</Example>
+
+Isso tem um custo, porém. Arrays garantem acesso instantâneo a qualquer elemento por índice. Linked Lists abrem mão disso em troca de insertion e deletion baratas. Toda decisão de design na computação é um tradeoff — este não é diferente.
+
+## Como os nodes se conectam
+
+A lista é ancorada por um **pointer de head** — uma variável que armazena o endereço do primeiro node. O campo `next` do último node é definido como `NULL`, sinalizando o fim da cadeia.
+
+```c
+struct Node *head = NULL;  // Lista vazia
+```
+
+Para construir uma lista de três nodes:
+
+```c
+struct Node *a = malloc(sizeof(struct Node));
+struct Node *b = malloc(sizeof(struct Node));
+struct Node *c = malloc(sizeof(struct Node));
+
+a->value = 42;  a->next = b;
+b->value = 17;  b->next = c;
+c->value = 8;   c->next = NULL;
+
+head = a;
+```
+
+Agora `head → 42 → 17 → 8 → NULL`.
+
+<Callout type="warning">
+  O pointer de head é sua única entrada na lista. Se você o perder —
+  sobrescrevendo a variável sem salvar uma referência — toda a cadeia fica
+  inacessível. Os dados ainda existem na memória, mas você jamais os encontrará
+  novamente. Isso é um memory leak.
+</Callout>
+
+## Traversal: caminhando pela cadeia
+
+Como os nodes não são armazenados contiguamente, você não pode pular para uma posição arbitrária. Não há cálculo como `início + (índice × tamanho)`. Para chegar ao 5º elemento, você deve passar pelos quatro primeiros.
+
+```c
+struct Node *atual = head;
+
+while (atual != NULL) {
+    printf("%d\n", atual->value);
+    atual = atual->next;
+}
+```
+
+Isso é <Tooltip title="Tempo linear" content="O(n) — visitar n nodes leva n passos">O(n)</Tooltip> para cada acesso por posição. É o tradeoff fundamental: a mesma flexibilidade que torna a insertion barata torna o acesso aleatório caro.
+
+<Callout type="info">
+  É por isso que Linked Lists quebram a busca binária. A busca binária precisa
+  pular para o meio em O(1) — algo que arrays conseguem com aritmética de
+  índice, mas Linked Lists não conseguem.
+</Callout>
+
+## Insertion: onde Linked Lists brilham
+
+A insertion tem três casos distintos, cada um com custos diferentes.
+
+### Na head
+
+A operação mais barata. Faça o novo node apontar para o head atual, depois atualize o head para o novo node. Duas atribuições de pointer — feito.
+
+```c
+struct Node *novo = malloc(sizeof(struct Node));
+novo->value = 99;
+novo->next = head;
+head = novo;
+```
+
+<MemoryVisualization
+  title="Inserindo 99 na head:"
+  type="linked"
+  blocks={[
+    { address: '0x3B10', value: 99, label: 'novo head → next: 0x1000' },
+    { address: '0x1000', value: 42, label: 'next: 0x2F40' },
+    { address: '0x2F40', value: 17, label: 'next: NULL' },
+  ]}
+>
+  Antes: <span className="text-danger">42 → 17</span> &nbsp;→&nbsp; Depois:{' '}
+  <span className="text-success">99 → 42 → 17</span>
+</MemoryVisualization>
+
+Isso é <Tooltip title="Tempo constante" content="O(1) — sempre duas atualizações de pointer, independente do tamanho da lista">O(1)</Tooltip>, independente do tamanho da lista.
+
+### Após um node conhecido
+
+Se você já tem um pointer para um node, inserir imediatamente após ele também é O(1). Basta encaixar o novo node:
+
+```c
+// Inserir novo após 'alvo'
+novo->next = alvo->next;
+alvo->next = novo;
+```
+
+A ordem importa aqui. Se você definir `alvo->next = novo` primeiro, perde a referência para o resto da lista.
+
+### Na tail (ou posição arbitrária)
+
+Sem um pointer de tail, chegar ao último node requer percorrer a lista inteira — O(n). A insertion em si é O(1), mas encontrar a posição certa custa O(n).
+
+Muitas implementações mantêm um pointer `tail` separado ao lado do `head`, para que adicionar no final permaneça O(1).
+
+## Deletion: cirurgia de pointers
+
+Deletar um node significa fazer seu predecessor pular sobre ele, depois liberar a memória.
+
+```c
+// Deletar o node após 'anterior'
+struct Node *a_deletar = anterior->next;
+anterior->next = a_deletar->next;
+free(a_deletar);
+```
+
+<MemoryVisualization
+  title="Deletando o node com valor 17:"
+  type="linked"
+  blocks={[
+    { address: '0x1000', value: 42, label: 'next: 0x0A80 (era 0x2F40)' },
+    { address: '0x0A80', value: 8, label: 'next: NULL' },
+  ]}
+>
+  Antes: <span className="text-danger">42 → 17 → 8</span> &nbsp;→&nbsp; Depois:{' '}
+  <span className="text-success">42 → 8</span>
+</MemoryVisualization>
+
+<Callout type="warning">
+  Em C, você deve chamar `free()` no node removido. Esquecer significa que a
+  memória permanece alocada mas inacessível — um memory leak que se acumula a
+  cada deletion.
+</Callout>
+
+Deletar um valor específico leva O(n) para encontrar o node, depois O(1) para desconectá-lo. Deletar da head é sempre O(1):
+
+```c
+struct Node *head_antiga = head;
+head = head->next;
+free(head_antiga);
+```
+
+## Operações comuns e seus custos
+
+| Operação                         | Tempo | Por quê                                       |
+| -------------------------------- | ----- | --------------------------------------------- |
+| Acesso por índice                | O(n)  | Deve caminhar a partir do head                |
+| Busca por valor                  | O(n)  | Deve verificar cada node                      |
+| Insertion na head                | O(1)  | Apenas redireciona pointer de head            |
+| Insertion na tail (sem tail ptr) | O(n)  | Deve chegar à tail primeiro                   |
+| Insertion na tail (com tail ptr) | O(1)  | Pointer de tail dá acesso direto              |
+| Insertion após node conhecido    | O(1)  | Duas atualizações de pointer                  |
+| Deletion da head                 | O(1)  | Redireciona head, libera node                 |
+| Deletion por valor               | O(n)  | Deve encontrar node, depois O(1) para remover |
+
+O padrão: encontrar uma posição custa O(n), mas a insertion ou deletion real quando você está lá é O(1). Arrays têm o oposto: encontrar por índice é O(1), mas modificar a estrutura custa O(n).
+
+## Doubly Linked Lists
+
+Uma Singly Linked List só sabe como ir para frente. Uma **Doubly Linked List** adiciona um pointer `prev`, permitindo caminhar em ambas as direções.
+
+```c
+struct DNode {
+    int value;
+    struct DNode *next;
+    struct DNode *prev;
+};
+```
+
+<MemoryVisualization
+  title="Doubly linked — traversal bidirecional:"
+  type="linked"
+  blocks={[
+    { address: '0x1000', value: 42, label: 'prev: NULL | next: 0x2F40' },
+    { address: '0x2F40', value: 17, label: 'prev: 0x1000 | next: 0x0A80' },
+    { address: '0x0A80', value: 8, label: 'prev: 0x2F40 | next: NULL' },
+  ]}
+>
+  <span className="text-success">NULL ← 42 ↔ 17 ↔ 8 → NULL</span>
+</MemoryVisualization>
+
+O benefício: se você tem uma referência direta a um node, pode deletá-lo em O(1) — sem precisar percorrer a lista a partir do head para encontrar seu predecessor, porque o node já sabe quem é via `prev`.
+
+O custo: cada node agora carrega dois pointers em vez de um. Em um sistema de 64 bits, isso são 16 bytes de overhead por node, apenas para bookkeeping. E cada insertion ou deletion deve atualizar tanto `next` quanto `prev` corretamente — mais passos, mais chances de bugs.
+
+Use Doubly Linked Lists quando você precisa percorrer de trás para frente ou deletar nodes que você tem referências diretas. Use Singly Linked Lists quando traversal para frente for suficiente e memória for escassa.
+
+## Circular Linked Lists
+
+Em uma Circular Linked List, o `next` do último node aponta de volta para o head em vez de `NULL`. Não há fim — a lista faz um loop.
+
+```c
+// Tornando uma lista de 3 nodes circular
+c->next = head;  // c antes apontava para NULL
+```
+
+Isso se mapeia naturalmente para processos cíclicos: um player de mídia fazendo loop numa playlist, um scheduler round-robin ciclando por tarefas, ou um buffer onde o "fim" dá a volta para o "início".
+
+<Callout type="info">
+  O scheduler de processos do kernel Linux usa uma Doubly Circular Linked List
+  para gerenciar a run queue. Cada processo na queue aponta para o próximo a
+  executar, e o último aponta de volta para o primeiro — um loop elegante sem
+  caso especial para "fim da lista".
+</Callout>
+
+Ao percorrer uma Circular Linked List, tome cuidado: sem rastrear quando você fez um loop de volta ao início, você iterará para sempre.
+
+## Linked Lists no mundo real
+
+Linked Lists sustentam mais abstrações do que você pode imaginar:
+
+- **Histórico do navegador** — Doubly Linked, para que os botões voltar/avançar percorram em ambas as direções
+- **Desfazer/refazer em editores** — cada estado é um node; desfazer caminha `prev`, refazer caminha `next`
+- **LRU caches** — uma Doubly Linked List pareada com um hash map permite deletions O(1)
+- **Stacks e queues** — ambas podem ser implementadas trivialmente sobre uma Linked List
+- **Alocadores de memória do sistema operacional** — blocos de memória livres são rastreados com Linked Lists
+
+Nas bibliotecas padrão: `std::list` em C++, `LinkedList` em Java, e `collections.deque` em Python são todos respaldados por implementações de Doubly Linked List.
+
+## Quando Linked Lists ficam aquém
+
+Linked Lists têm a reputação persistente de serem a resposta para problemas de insertion em arrays. Na prática, a história é mais nuançada.
+
+**Cache misses são caros.** Arrays armazenam elementos lado a lado — acessar um traz seus vizinhos para o cache da CPU de graça. Nodes de Linked Lists podem estar em qualquer lugar da RAM. Cada `atual = atual->next` é potencialmente um novo cache miss, forçando a CPU a esperar os dados chegarem da memória principal. No hardware moderno, cache misses podem ser 100x mais lentos que cache hits.
+
+**Overhead de memória se acumula.** Cada node carrega pelo menos um pointer (8 bytes em sistemas de 64 bits). Uma lista de inteiros usa mais memória para pointers do que para os dados reais.
+
+**Sem acesso aleatório.** Algoritmos que precisam pular para posições arbitrárias — busca binária, ordenação por índice, qualquer coisa que diga `lista[i]` — não funcionam diretamente em Linked Lists.
+
+**O benchmark honesto.** Para muitas cargas de trabalho de "inserir no meio", um array dinâmico (`std::vector` em C++) supera uma Linked List na prática, porque os dados permanecem cache-friendly. O deslocamento O(n) costuma ser mais rápido do que o traversal O(n) pela memória espalhada.
+
+Linked Lists são a ferramenta certa quando: você precisa de insertions/deletions O(1) na head, está implementando uma abstração de nível mais alto (stack, queue, LRU cache), ou está trabalhando em um ambiente onde realocação de memória é cara.
+
+## Resumo
+
+Linked Lists são a primeira estrutura de dados baseada em pointers — elas trocam o endereçamento direto do array por uma estrutura dinâmica e flexível:
+
+- **Insertion e deletion O(1) na head** — sem deslocamento, apenas redirecione um pointer
+- **Traversal O(n)** — sem atalhos, deve caminhar pela cadeia
+- **Tamanho dinâmico** — cresce e diminui sem realocação
+- **Memória espalhada** — não cache-friendly, cada node é um potencial cache miss
+- **Variantes para diferentes necessidades** — Singly (leve), Doubly (flexível), Circular (cíclica)
+
+O insight principal é que Linked Lists movem o custo. Arrays tornam o acesso aleatório barato mas a mutação cara. Linked Lists tornam a mutação barata mas o acesso aleatório caro. Saber qual custo você pode pagar é a habilidade.
+
+Linked Lists também introduzem o conceito mais importante em todas as estruturas de dados baseadas em pointers: a ideia de que um node pode apontar para outro node do mesmo tipo. Esse padrão autorreferencial é a fundação de trees, graphs, e quase toda estrutura de dados avançada que você encontrará a seguir.

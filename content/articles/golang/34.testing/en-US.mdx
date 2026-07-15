@@ -1,0 +1,305 @@
+---
+title: Testing
+description: Learn how Go's built-in testing package and go test command cover everything you need, from basic assertions to table-driven tests and package-level setup.
+slug: testing
+publishedAt: '2026-05-04'
+keywords:
+  - golang
+  - testing
+  - go test
+  - table-driven tests
+  - TestMain
+  - subtests
+---
+
+## Why Go's testing story is different
+
+In most ecosystems, setting up tests involves choosing a framework, installing dependencies, and wiring things together. Go ships with everything built in. The `testing` package is part of the standard library, and `go test` is part of the toolchain. You can write meaningful tests from day one without any external dependencies.
+
+The result is a testing culture that feels native to the language: consistent, portable, and practical. Understanding the `testing` package is not optional knowledge — it's part of writing Go professionally.
+
+## Test files and the go test command
+
+Go's build system uses file naming to separate test code from production code. Any file whose name ends with `_test.go` is a test file. These files are compiled only when running tests and are never included in your production binary.
+
+The convention is to keep test files alongside the code they test, in the same directory. If you have `math.go`, the tests live in `math_test.go`.
+
+To run tests, use `go test`:
+
+```bash
+go test ./...            # run all tests in the current module
+go test ./pkg/math       # run tests in one package
+go test -v ./...         # verbose: show test names and t.Log output
+go test -run TestSum     # run only tests whose name matches the pattern
+
+```
+
+The `-v` flag is especially useful during development — it prints `t.Log` output even for passing tests, which helps trace what a test was doing before it failed.
+
+## Writing your first test
+
+A test function must follow two rules: its name starts with `Test` followed by a name beginning with a capital letter, and it accepts exactly one argument — a pointer to `testing.T`.
+
+```go
+// math.go
+package math
+
+func Sum(a, b int) int {
+    return a + b
+}
+
+```
+
+```go
+// math_test.go
+package math
+
+import "testing"
+
+func TestSum(t *testing.T) {
+    got := Sum(2, 3)
+    want := 5
+
+    if got != want {
+        t.Errorf("Sum(2, 3) = %d, want %d", got, want)
+    }
+}
+
+```
+
+Running `go test` in this directory either prints a `ok` line or a failure with the message you provided. The test name in the report comes directly from the function name.
+
+## The \*testing.T type
+
+`*testing.T` is your handle on the test runner. It lets you report failures, emit log messages, create subtests, and register cleanup functions. Here are the most commonly used methods:
+
+| Method                    | Behavior                                                            |
+| ------------------------- | ------------------------------------------------------------------- |
+| `Log(args...)`            | Prints a message; only visible with `-v` or on failure              |
+| `Logf(format, args...)`   | Formats and prints a message                                        |
+| `Error(args...)`          | Marks the test failed; execution continues                          |
+| `Errorf(format, args...)` | Formats the message, marks failed, continues                        |
+| `Fatal(args...)`          | Marks the test failed; stops execution immediately                  |
+| `Fatalf(format, args...)` | Formats the message, marks failed, stops                            |
+| `Skip(args...)`           | Marks the test skipped and stops execution                          |
+| `Helper()`                | Marks the calling function as a helper (adjusts error line numbers) |
+| `Run(name, f)`            | Runs `f` as a named subtest                                         |
+| `Cleanup(f)`              | Registers `f` to run after the test or subtest completes            |
+| `Parallel()`              | Allows this test to run in parallel with other parallel tests       |
+
+`t.Helper()` deserves a mention: when you write a helper function that calls `t.Error` or `t.Fatal`, marking it with `t.Helper()` makes the failure point in the output refer to the caller rather than the helper itself. This makes failures much easier to locate.
+
+## Error vs Fatal
+
+The distinction between `Error` and `Fatal` matters more than it might first appear.
+
+`Error` and `Errorf` mark the test as failed but allow the rest of the function to continue running. Use them when you want to check multiple independent conditions and report all failures at once:
+
+```go
+func TestConfig(t *testing.T) {
+    cfg := LoadConfig("testdata/config.json")
+
+    if cfg.Host == "" {
+        t.Error("Host should not be empty")
+    }
+    if cfg.Port == 0 {
+        t.Error("Port should not be zero")
+    }
+}
+
+```
+
+Both problems are reported in a single test run, giving you a complete picture of what is broken.
+
+`Fatal` and `Fatalf` mark the test as failed and stop execution of the current test function immediately. Use them when a subsequent step would either panic or produce meaningless results without the prior step succeeding:
+
+```go
+func TestUserLoad(t *testing.T) {
+    user, err := LoadUser(42)
+    if err != nil {
+        t.Fatalf("LoadUser(42) failed: %v", err)
+    }
+
+    // safe to reach here — Fatal would have stopped us if err != nil
+    if user.Name == "" {
+        t.Error("Name should not be empty")
+    }
+}
+
+```
+
+If `LoadUser` returns an error and you used `t.Error` instead of `t.Fatal`, the next line would likely panic on a nil pointer. `t.Fatal` prevents that.
+
+<Callout type="note" title="Fatal stops the current test, not the whole binary">
+  `t.Fatal` stops execution of the current goroutine via `runtime.Goexit`. Other
+  test functions continue to run normally.
+</Callout>
+
+## Table-driven tests
+
+The dominant testing pattern in Go is the table-driven test. Instead of writing separate functions for each scenario, you define a slice of test cases and loop over them:
+
+```go
+func TestSum(t *testing.T) {
+    tests := []struct {
+        name string
+        a, b int
+        want int
+    }{
+        {"positive numbers", 2, 3, 5},
+        {"negative numbers", -1, -2, -3},
+        {"zero", 0, 0, 0},
+        {"mixed signs", -1, 1, 0},
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            got := Sum(tt.a, tt.b)
+            if got != tt.want {
+                t.Errorf("Sum(%d, %d) = %d, want %d", tt.a, tt.b, got, tt.want)
+            }
+        })
+    }
+}
+
+```
+
+Adding a new test case is a one-line change in the slice. Each case runs as a named subtest via `t.Run`, so failure output like `--- FAIL: TestSum/mixed_signs` tells you exactly which case broke. You can also run a single case in isolation:
+
+```bash
+go test -run TestSum/mixed_signs
+
+```
+
+This pattern scales cleanly from simple functions to complex behavior with dozens of edge cases. You will see it everywhere in the Go standard library and well-written Go projects.
+
+## Subtests and parallel execution
+
+`t.Run(name, f)` runs `f` as a subtest of the current test. The parent test waits for all subtests to finish before completing. Subtests can themselves call `t.Run`, giving you nested test hierarchies when needed.
+
+Subtests can be run in parallel by calling `t.Parallel()` at the start of the subtest function:
+
+```go
+for _, tt := range tests {
+    tt := tt // capture the loop variable
+    t.Run(tt.name, func(t *testing.T) {
+        t.Parallel()
+        got := Sum(tt.a, tt.b)
+        if got != tt.want {
+            t.Errorf("Sum(%d, %d) = %d, want %d", tt.a, tt.b, got, tt.want)
+        }
+    })
+}
+
+```
+
+<Callout type="note" title="Loop variable capture before Go 1.22">
+  Before Go 1.22, the range variable `tt` was reused across iterations. Without
+  the `tt := tt` line, all goroutines would close over the same variable and
+  likely test the last case only. Go 1.22 fixed this behavior, but you will
+  still see the pattern in older codebases.
+</Callout>
+
+## Cleanup
+
+`t.Cleanup(f)` registers a function to be called when the test (or subtest) finishes, regardless of whether it passes or fails. It is the test-aware equivalent of `defer`:
+
+```go
+func TestWithFile(t *testing.T) {
+    f, err := os.CreateTemp("", "test-*.txt")
+    if err != nil {
+        t.Fatal(err)
+    }
+    t.Cleanup(func() {
+        os.Remove(f.Name())
+    })
+
+    // write to f, run assertions ...
+}
+
+```
+
+For temporary directories specifically, `t.TempDir()` is a convenience method that creates a directory and registers its deletion automatically — no manual cleanup needed:
+
+```go
+dir := t.TempDir()
+// dir is removed after the test completes
+
+```
+
+The advantage of `t.Cleanup` over a bare `defer` is that cleanup functions registered in a parent test run after all subtests finish, which `defer` cannot guarantee.
+
+## TestMain
+
+Sometimes you need setup that runs once before any test in a package — creating a database connection, populating shared fixtures, or starting a background server. `TestMain` is the hook for this.
+
+```go
+package math_test
+
+import (
+    "os"
+    "testing"
+)
+
+func TestMain(m *testing.M) {
+    // package-level setup
+    setup()
+
+    code := m.Run() // run all Test* functions in this package
+
+    // package-level teardown
+    teardown()
+
+    os.Exit(code)
+}
+
+```
+
+When `TestMain` is present, it replaces the default test runner as the entry point for the package's tests. `m.Run()` executes all `TestXxx` functions and returns an integer exit code. Passing that code to `os.Exit` is not optional — it is how the test binary communicates pass or fail to the outside world.
+
+<Callout type="warning" title="Always call os.Exit with m.Run()">
+  If you return from `TestMain` without calling `os.Exit`, the process exits
+  with code 0 regardless of test failures. The CI system sees a green build; the
+  failures are silently swallowed.
+</Callout>
+
+### The testdata directory
+
+When tests depend on external files — JSON fixtures, SQL migration scripts, expected output — place them in a `testdata/` directory alongside the test files. Go's build tools ignore this directory, and the test runner sets the working directory to the package directory, so you can use relative paths directly:
+
+```go
+data, err := os.ReadFile("testdata/input.json")
+if err != nil {
+    t.Fatal(err)
+}
+
+```
+
+The name `testdata` is a Go convention. Any directory with that name is ignored by the compiler and `go build`.
+
+### Black-box testing
+
+By default, a test file in `package math` can access unexported identifiers. This is white-box testing — the tests know the internals.
+
+If you want to test only the exported API (black-box testing), name the test package `math_test`:
+
+```go
+// math_test.go
+package math_test
+
+import (
+    "math"
+    "testing"
+)
+
+func TestSum(t *testing.T) {
+    // only exported identifiers are accessible here
+    got := math.Sum(2, 3)
+    if got != 5 {
+        t.Errorf("got %d, want 5", got)
+    }
+}
+
+```
+
+You can have both `package math` and `package math_test` files in the same directory. The common approach is to use `package math` for tests that need access to unexported internals, and `package math_test` for tests that verify the public contract. This discipline catches when your public API accidentally depends on internal details.

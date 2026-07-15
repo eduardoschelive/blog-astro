@@ -1,0 +1,376 @@
+---
+title: Types and methods
+description: Learn how to define and derive custom types in Go, attach behavior with methods, understand receivers and method sets, and use iota for typed constant sequences.
+slug: types-and-methods
+publishedAt: '2026-04-22'
+keywords:
+  - golang
+  - types
+  - derived types
+  - methods
+  - receivers
+  - pointer receiver
+  - value receiver
+  - method sets
+  - method expressions
+  - iota
+---
+
+Go's type system is not just about memory layout. Types carry meaning, and they can carry behavior. When you define a custom type, you are not only describing what data looks like — you are creating a new concept in your program that can have operations of its own. This article walks through how user-defined types work, how to attach methods to them, and the rules that govern how those methods can be called.
+
+## User-defined types
+
+The `type` keyword creates a new named type derived from an existing one:
+
+```go
+type Celsius float64
+type Fahrenheit float64
+```
+
+Both types share the same underlying representation as `float64`, but Go treats them as distinct types. You cannot assign a `Celsius` value to a `Fahrenheit` variable without an explicit conversion. This is intentional: the type system prevents you from accidentally mixing them.
+
+```go
+var boiling Celsius = 100
+var body Fahrenheit = 37 // different type — no implicit conversion
+
+// explicit conversion is required
+converted := Fahrenheit(boiling*9/5 + 32)
+```
+
+You can also derive types from composite types:
+
+```go
+type TodoList []string
+```
+
+A `TodoList` behaves like a slice — you can index it, range over it, pass it to `append` — but it is a distinct type, and you can define methods on it.
+
+You have already seen struct types in the [structs article](/en-US/categories/golang/articles/structs) and function types in the [functions article](/en-US/categories/golang/articles/functions). Both are built with `type`, and both follow the same rules for methods.
+
+<Callout type="note" title="Derived types do not inherit methods">
+  When you create a new type from an existing one, you get the operations of the
+  underlying kind (arithmetic for numeric types, indexing for slices) but not
+  any methods defined on the original named type. If `http.ResponseWriter` has
+  methods, a type derived from it does not automatically gain those methods.
+</Callout>
+
+## Deriving from user-defined types
+
+The `type` keyword is not limited to built-in types as a base. You can derive a new type from any existing named type, including ones you defined yourself:
+
+```go
+type Celsius float64
+type AbsoluteTemp Celsius // derived from a user-defined type
+```
+
+`AbsoluteTemp` and `Celsius` share the same underlying representation (`float64`), but all three — `float64`, `Celsius`, and `AbsoluteTemp` — are distinct types.
+
+The operators available to a derived type come from the **underlying built-in type**, not from the intermediate named type. Because `Celsius` is ultimately `float64`, `AbsoluteTemp` supports float arithmetic:
+
+```go
+var t AbsoluteTemp = 373.15 // boiling point in Kelvin
+fmt.Println(t + 1)          // 374.15 — float arithmetic works
+```
+
+However, `AbsoluteTemp` does not inherit any methods defined on `Celsius`. Methods belong to the named type they were declared on and do not transfer to derived types:
+
+```go
+func (c Celsius) ToFahrenheit() Fahrenheit {
+    return Fahrenheit(c*9/5 + 32)
+}
+
+var abs AbsoluteTemp = 373.15
+abs.ToFahrenheit() // compile error — AbsoluteTemp has no method ToFahrenheit
+```
+
+To call `ToFahrenheit`, you must first explicitly convert `AbsoluteTemp` to `Celsius`.
+
+## Is it inheritance?
+
+No. Derived types in Go are not a form of inheritance. The two types are entirely independent — they share a memory layout and the operators of their common underlying type, but nothing else:
+
+- The derived type has none of the base type's methods.
+- You cannot substitute one for the other without an explicit conversion.
+- There is no type hierarchy, no virtual dispatch, and no polymorphism through derivation.
+
+Go is a language with object-oriented concepts, but it deliberately does not have inheritance. Instead, Go favors **composition** and **promotion** — embedding one type inside another to reuse its fields and methods. This is covered in a later article.
+
+The practical benefit of this design: a derived type is a clean slate. You control exactly the behavior it has, with no hidden methods carried over from a base type and no risk of accidentally breaking an inherited contract.
+
+## Abstract and concrete types
+
+Go distinguishes between two categories of types:
+
+**Concrete types** define both what data is stored and how it is stored. A struct, a derived numeric type, or a slice type are all concrete. When you have a value of a concrete type, you know exactly what operations are available and how they are implemented.
+
+**Abstract types** define only what operations a type must support — not how. The primary abstract type in Go is the interface, which you will encounter in a later article. A function type is another example: `type Handler func(string) error` defines a signature contract without specifying any particular implementation.
+
+The practical takeaway: most types you write day-to-day are concrete. Abstract types (interfaces) become important when you want to write code that works with multiple different concrete types through a shared contract.
+
+## Iota
+
+`iota` is a predeclared identifier available only inside `const` blocks. It starts at zero and increments by one for each constant specification in the block. It is the idiomatic Go way to define a set of related named constants:
+
+```go
+type Direction int
+
+const (
+    North Direction = iota // 0
+    South                  // 1
+    East                   // 2
+    West                   // 3
+)
+```
+
+Each identifier without an explicit expression repeats the last expression with the updated value of `iota`. The result is a concise way to assign sequential values to a set of typed constants without writing each number by hand.
+
+`iota` can appear in expressions, enabling non-linear sequences:
+
+```go
+type ByteSize float64
+
+const (
+    _           = iota             // skip 0
+    KB ByteSize = 1 << (10 * iota) // 1 << 10 = 1024
+    MB                             // 1 << 20 = 1048576
+    GB                             // 1 << 30 = 1073741824
+)
+```
+
+`iota` resets to zero at the start of each new `const` block. A single `const` block can mix `iota`-based and explicit constants, but `iota` still increments for every line in the block, even those with explicit values.
+
+<Callout type="note" title="Iota is not an enum">
+  Go has no built-in enum type. `iota` gives you a sequence of integer
+  constants, but the compiler does not enforce exhaustiveness — a `switch` over
+  a `Direction` will not warn you if you miss a case. If you need string
+  representations for your constants, you must write a `String()` method on the
+  type. The [`stringer`](https://pkg.go.dev/golang.org/x/tools/cmd/stringer)
+  tool can generate this automatically.
+</Callout>
+
+## Methods
+
+A method is a function with a **receiver** — an extra parameter declared between the `func` keyword and the method name that binds the function to a specific type. Here is the comparison:
+
+```go
+// standalone function
+func celsiusToFahrenheit(c float64) float64 {
+    return c*9/5 + 32
+}
+
+// method on the Celsius type
+func (c Celsius) ToFahrenheit() Fahrenheit {
+    return Fahrenheit(c*9/5 + 32)
+}
+```
+
+The receiver `(c Celsius)` is declared before the method name. Inside the method body, `c` holds the value the method was called on.
+
+Calling a method uses dot notation, the same as accessing a struct field:
+
+```go
+temp := Celsius(100)
+fmt.Println(temp.ToFahrenheit()) // 212
+```
+
+Two important constraints on methods in Go:
+
+- **No overloading.** Each method name must be unique per type. You cannot define two methods both named `String` with different parameters.
+- **Same package only.** You can only define methods on types declared in the same package. You cannot add methods to `int` or `string` directly — but you can create `type MyInt int` and define methods on that.
+
+## Value receivers
+
+When a method is defined with a value receiver, it receives a copy of the value it was called on. Any modification to the receiver inside the method does not affect the original.
+
+```go
+func (c Celsius) String() string {
+    return fmt.Sprintf("%.1f°C", float64(c))
+}
+```
+
+Use a value receiver when the method only reads from the receiver and does not need to modify it. Value receivers work well for small types where copying is cheap.
+
+## Pointer receivers
+
+When a method is defined with a pointer receiver, it receives the address of the value. Modifications to `*c` inside the method affect the original variable in the caller.
+
+```go
+type Counter struct {
+    value int
+}
+
+func (c *Counter) Increment() {
+    c.value++
+}
+
+func (c *Counter) Reset() {
+    c.value = 0
+}
+
+func (c Counter) Value() int {
+    return c.value
+}
+```
+
+`Increment` and `Reset` modify the counter's state, so they use a pointer receiver. `Value` only reads, so it uses a value receiver.
+
+```go
+counter := Counter{}
+counter.Increment()
+counter.Increment()
+fmt.Println(counter.Value()) // 2
+counter.Reset()
+fmt.Println(counter.Value()) // 0
+```
+
+**Nil pointer receivers.** A pointer receiver method can be called even when the pointer is `nil`. This can be useful — for example, a method that returns a zero value when the pointer is nil — but the method must guard against nil dereferences:
+
+```go
+func (c *Counter) SafeValue() int {
+    if c == nil {
+        return 0
+    }
+    return c.value
+}
+```
+
+**Automatic address-taking.** When you call a pointer receiver method on an addressable value (a variable), Go automatically takes its address for you:
+
+```go
+counter := Counter{}
+counter.Increment() // Go rewrites this as (&counter).Increment()
+```
+
+This is syntactic convenience. Behind the scenes, Go passes `&counter` to the method. The variable `counter` is addressable because it is a named variable; a temporary return value is not.
+
+<Callout type="note" title="Consistency within a type">
+  If any method on a type uses a pointer receiver, prefer making all methods use
+  pointer receivers. Mixing pointer and value receivers on the same type can
+  cause subtle issues with interface satisfaction (covered in a later article)
+  and makes the intent less clear.
+</Callout>
+
+## Method sets
+
+Not every form of a value can call every method. Go's method set rules determine which methods are accessible:
+
+| Form                        | Callable methods                                            |
+| --------------------------- | ----------------------------------------------------------- |
+| `*T` (pointer)              | Pointer receiver methods + value receiver methods           |
+| `T` (addressable variable)  | Both — Go auto-takes the address for pointer receiver calls |
+| `T` (non-addressable value) | Value receiver methods only                                 |
+
+A non-addressable value is any value that Go cannot take the address of: the return value of a function call, a value stored in a map, a type conversion result, and similar temporaries.
+
+```go
+type Stack []int
+
+func (s *Stack) Push(v int) {
+    *s = append(*s, v)
+}
+
+func (s Stack) Len() int {
+    return len(s)
+}
+
+// This works — variable is addressable
+var s Stack
+s.Push(1)
+
+// This does NOT compile — map values are not addressable
+m := map[string]Stack{"main": {}}
+m["main"].Push(1) // error: cannot take the address of m["main"]
+```
+
+<Callout type="warning" title="Map values are not addressable">
+  Storing a struct or slice in a map and then calling a pointer receiver method
+  on it is one of the most common compiler errors in Go. The fix is to read the
+  value out, modify it, and write it back — or to store a pointer in the map
+  instead: `map[string]*Stack`.
+</Callout>
+
+## Methods and functions
+
+Methods and functions are closely related. In fact, a **method value** — a method with its receiver bound — is a regular function value that can be stored in a variable and passed around:
+
+```go
+counter := Counter{value: 5}
+
+// bind the method to this specific counter instance
+inc := counter.Increment
+inc() // equivalent to counter.Increment()
+fmt.Println(counter.Value()) // 6
+```
+
+`inc` has type `func()`. The receiver (`counter`) is captured when you write `counter.Increment` — subsequent calls to `inc` always operate on that same `counter`.
+
+This means a method can be passed anywhere a matching function type is expected:
+
+```go
+type Action func()
+
+func repeat(n int, action Action) {
+    for range n {
+        action()
+    }
+}
+
+counter := Counter{}
+repeat(3, counter.Increment)
+fmt.Println(counter.Value()) // 3
+```
+
+The method value `counter.Increment` satisfies `Action` because its signature — `func()` — matches.
+
+## Method expressions
+
+A **method expression** is a different way of turning a method into a function. Instead of binding the receiver at the time you reference the method, the receiver becomes an explicit first argument:
+
+```go
+// method value   — receiver is bound: func()
+inc := counter.Increment
+
+// method expression — receiver is explicit: func(*Counter)
+incExpr := (*Counter).Increment
+```
+
+To call the method expression, you pass the receiver as the first argument:
+
+```go
+c := Counter{}
+incExpr := (*Counter).Increment
+incExpr(&c) // equivalent to c.Increment()
+fmt.Println(c.Value()) // 1
+```
+
+Method expressions are useful when you want to select which method to call at runtime without committing to a specific receiver instance yet:
+
+```go
+type Transform func(*Counter)
+
+operations := []Transform{
+    (*Counter).Increment,
+    (*Counter).Increment,
+    (*Counter).Reset,
+    (*Counter).Increment,
+}
+
+c := Counter{}
+for _, op := range operations {
+    op(&c)
+}
+fmt.Println(c.Value()) // 1 (incremented twice, reset, incremented once)
+```
+
+The distinction between a method value and a method expression is subtle but important: a method value captures a receiver; a method expression leaves the receiver open to be supplied at each call.
+
+## Summary
+
+|                                   | Value receiver    | Pointer receiver       |
+| --------------------------------- | ----------------- | ---------------------- |
+| What is passed                    | Copy of the value | Address of the value   |
+| Can modify receiver               | No                | Yes                    |
+| Callable on pointer               | Yes               | Yes                    |
+| Callable on addressable value     | Yes               | Yes (auto-converted)   |
+| Callable on non-addressable value | Yes               | No                     |
+| Nil receiver is possible          | No                | Yes (check before use) |

@@ -1,0 +1,127 @@
+---
+title: Conditionals
+description: Master Go's conditional statements — if, else, else if, and if init statements. Learn how Go enforces strict boolean conditions and how scoped variables make error handling cleaner.
+slug: conditionals
+publishedAt: '2026-04-08'
+keywords:
+  [
+    golang,
+    go conditionals,
+    go if else,
+    go if init statement,
+    go scoped variables,
+    go boolean conditions,
+    go conditional,
+    idiomatic go,
+  ]
+---
+
+## The `if` statement
+
+An `if` statement executes a block of code only when a condition is true. The condition is a boolean expression — it must evaluate to either `true` or `false`.
+
+```go
+age := 20
+
+if age >= 18 {
+    fmt.Println("adult")
+}
+
+```
+
+The parentheses around the condition are optional in many languages but are absent by convention in Go — the compiler accepts them, but `gofmt` removes them. The curly braces, however, are always required. Go does not allow single-line `if` bodies without braces.
+
+<Callout type="note" title="Go requires a strict bool">
+Unlike C, JavaScript, or Python, Go does not treat non-zero integers, non-empty strings, or non-nil pointers as truthy. The condition must be an expression that evaluates to exactly `bool`. Writing `if n { ... }` where `n` is an `int` is a compile error.
+</Callout>
+
+## The `if-else` statement
+
+An `else` block runs when the condition is false. It gives you a second path of execution — exactly one of the two blocks will run:
+
+```go
+score := 72
+
+if score >= 60 {
+    fmt.Println("pass")
+} else {
+    fmt.Println("fail")
+}
+
+```
+
+The `else` keyword must appear on the same line as the closing brace of the `if` block. Putting it on the next line is a compile error because Go's automatic semicolon insertion places a semicolon after the `}`, making the `else` unreachable:
+
+```go
+// compile error: unexpected else
+if score >= 60 {
+    fmt.Println("pass")
+}
+else {
+    fmt.Println("fail")
+}
+
+```
+
+## The `if-else if` statement
+
+When you need to evaluate more than two conditions, you can chain `else if` clauses. Go evaluates them from top to bottom and executes the first block whose condition is true. If no condition matches and an `else` is present, that block runs instead:
+
+```go
+temp := 22
+
+if temp < 0 {
+    fmt.Println("freezing")
+} else if temp < 15 {
+    fmt.Println("cold")
+} else if temp < 25 {
+    fmt.Println("comfortable")
+} else {
+    fmt.Println("hot")
+}
+
+```
+
+Once a condition matches, the remaining branches are skipped entirely — Go does not fall through to subsequent `else if` blocks. The final `else` is optional; without it, if no condition matches, execution continues after the entire chain.
+
+<Callout type="note" title="Long chains are a signal">
+  A long `if-else if` chain evaluating the same variable against different
+  values is often better expressed as a `switch` statement. `switch` is cleaner
+  to read, easier to extend, and makes the intent — "choose one of several
+  cases" — explicit.
+</Callout>
+
+## If with an init statement
+
+Go allows an optional initialization statement before the condition, separated by a semicolon. The variable declared in the init statement is scoped to the entire `if-else` block — it exists only within that block and is not accessible after it:
+
+```go
+if x := compute(); x > 0 {
+    fmt.Println("positive:", x)
+} else {
+    fmt.Println("non-positive:", x)
+}
+
+// x is not accessible here
+
+```
+
+This is not just syntactic convenience — it is an intentional scoping mechanism. By declaring the variable inside the `if`, you signal that its purpose is exclusively tied to that conditional check. It cannot leak into the surrounding scope and affect unrelated code.
+
+The pattern is used constantly for error handling in Go. Functions that can fail return a value and an error. The init statement captures both, and the body handles the failure path:
+
+```go
+if err := doSomething(); err != nil {
+    fmt.Println("error:", err)
+    return
+}
+
+```
+
+This is the idiomatic Go way to handle errors inline, without declaring a throwaway variable in the outer scope just to check it once. The variable exists for exactly as long as it is needed — no more.
+
+<Callout type="note" title="Both branches share the scoped variable">
+  A variable declared in the init statement is visible in all branches — the
+  `if` body, every `else if` body, and the `else` body. This is why `x` is
+  accessible in the `else` block in the first example above.
+</Callout>

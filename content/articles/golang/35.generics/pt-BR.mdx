@@ -1,0 +1,374 @@
+---
+title: Generics
+description: Aprenda como os generics do Go permitem reuso de código com type safety, usando type parameters e constraints para eliminar duplicação e casts inseguros.
+slug: genericos
+publishedAt: '2026-05-04'
+keywords:
+  - golang
+  - generics
+  - type parameters
+  - constraints
+  - type safety
+---
+
+## O problema antes dos generics
+
+Antes do Go 1.18, escrever uma função que funcionasse para múltiplos tipos significava escolher entre dois caminhos ruins. O primeiro era duplicação: escrever a mesma lógica uma vez para cada tipo necessário:
+
+```go
+func MinInt(a, b int) int {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+func MinFloat64(a, b float64) float64 {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+```
+
+O segundo era usar `interface{}` (agora com o alias `any`) — o que jogava fora toda a type safety e obrigava os chamadores a fazer type assertions que podiam causar panic em runtime.
+
+Os generics resolvem isso. Eles permitem escrever uma única função que funciona para muitos tipos enquanto o compilador verifica a corretude de tipos em cada chamada.
+
+## Type parameters
+
+Uma função genérica declara uma **lista de type parameters** entre colchetes antes da lista de parâmetros regular:
+
+```go
+func Min[T int | float64 | string](a, b T) T {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+```
+
+`T` é o **type parameter** — um placeholder para um tipo real que será preenchido quando a função for chamada. `int | float64 | string` é a **constraint** — ela especifica quais tipos podem substituir `T`. O corpo da função usa `T` exatamente como se fosse um tipo concreto.
+
+Para chamar uma função genérica, o compilador precisa saber qual é o `T`. Você pode fornecê-lo explicitamente:
+
+```go
+Min[int](3, 5)
+Min[string]("foo", "bar")
+
+```
+
+Mas na prática você quase nunca precisa fazer isso. O Go infere o type argument a partir dos argumentos da chamada.
+
+## Type inference
+
+Quando o Go consegue determinar o type argument a partir dos valores que você passa, você não precisa escrevê-lo:
+
+```go
+Min(3, 5)           // T inferido como int
+Min(3.14, 2.71)     // T inferido como float64
+Min("foo", "bar")   // T inferido como string
+
+```
+
+A type inference funciona na grande maioria dos casos. Type arguments explícitos só são necessários quando a inferência é ambígua — o que é raro em funções genéricas bem projetadas.
+
+## Constraints
+
+Uma constraint limita quais tipos podem ser substituídos por um type parameter. Constraints são interfaces comuns — toda interface em Go é agora uma constraint válida, e as interfaces ganharam novos poderes especificamente para expressar constraints de tipo. Se você quiser revisar como interfaces funcionam antes de mergulhar na sintaxe de constraints, o [artigo sobre interfaces](/pt-BR/categorias/golang/artigos/interfaces) cobre os fundamentos.
+
+### any
+
+A constraint `any` (um alias para `interface{}`) aceita qualquer tipo. Use-a quando sua função apenas armazena, passa ou retorna o valor — sem precisar realizar operações específicas do tipo:
+
+```go
+func First[T any](s []T) (T, bool) {
+    if len(s) == 0 {
+        var zero T
+        return zero, false
+    }
+    return s[0], true
+}
+
+```
+
+`First` funciona para um slice de qualquer tipo de elemento. Ela não compara nem soma elementos — apenas lê, então `any` é a constraint correta.
+
+### comparable
+
+A constraint built-in `comparable` aceita qualquer tipo que suporte `==` e `!=`. Isso inclui todos os tipos numéricos, strings, booleans, pointers, channels, arrays de elementos comparáveis e structs cujos campos são todos comparáveis.
+
+```go
+func Contains[T comparable](s []T, v T) bool {
+    for _, item := range s {
+        if item == v {
+            return true
+        }
+    }
+    return false
+}
+
+Contains([]string{"go", "rust", "zig"}, "go") // true
+Contains([]int{1, 2, 3}, 4)                   // false
+
+```
+
+O compilador impõe isso: se você tentar usar `==` em um valor cujo type parameter tem constraint `any`, o código não compila. `comparable` é a constraint correta sempre que sua função compara valores por igualdade.
+
+<Callout type="warning" title="Slices, maps e funções não são comparable">
+  Mesmo sendo os tipos compostos mais comuns em Go, slices e maps não podem
+  satisfazer `comparable` — a linguagem não permite compará-los com `==`. Passar
+  `[]int` ou `map[string]int` como type argument para uma função com constraint
+  `comparable` é um erro de compilação. Se você precisar usar um slice como
+  chave de map ou eliminar duplicatas de um slice de slices, precisará converter
+  para uma string como chave ou usar uma estratégia diferente.
+</Callout>
+
+### Constraints de interface
+
+Qualquer interface que define métodos pode servir como constraint. O corpo da função pode então chamar esses métodos em valores do type parameter:
+
+```go
+type Stringer interface {
+    String() string
+}
+
+func PrintAll[T Stringer](items []T) {
+    for _, item := range items {
+        fmt.Println(item.String())
+    }
+}
+
+```
+
+O compilador sabe que todo tipo substituído por `T` implementa `Stringer`, então chamar `item.String()` é válido.
+
+### Union constraints
+
+Interfaces podem incluir um **type set** — tipos concretos separados por `|`. O type parameter só pode ser substituído pelos tipos listados no set, e o corpo da função pode apenas usar operações suportadas por todos eles:
+
+```go
+type Number interface {
+    int | int8 | int16 | int32 | int64 |
+        uint | uint8 | uint16 | uint32 | uint64 |
+        float32 | float64
+}
+
+func Sum[T Number](s []T) T {
+    var total T
+    for _, v := range s {
+        total += v
+    }
+    return total
+}
+
+Sum([]int{1, 2, 3, 4})         // 10
+Sum([]float64{1.1, 2.2, 3.3})  // 6.6
+
+```
+
+O operador `+=` é válido aqui porque todos os tipos em `Number` suportam adição. Se você tentasse usar uma operação que apenas alguns tipos suportam, o compilador rejeitaria.
+
+### O prefixo ~
+
+Um elemento de constraint prefixado com `~` corresponde a qualquer tipo cujo **underlying type** seja aquele tipo:
+
+```go
+type Celsius float64
+type Fahrenheit float64
+
+type Temperature interface {
+    ~float64
+}
+
+func Abs[T Temperature](v T) T {
+    if v < 0 {
+        return -v
+    }
+    return v
+}
+
+Abs(Celsius(-5.3))    // funciona: underlying type de Celsius é float64
+Abs(Fahrenheit(98.6)) // funciona: underlying type de Fahrenheit é float64
+
+```
+
+Sem `~`, `Celsius` não satisfaria uma constraint de `float64` porque é um tipo nomeado distinto. O prefixo `~` estende a constraint para cobrir todos os tipos nomeados construídos sobre aquele underlying type — uma ferramenta essencial para escrever constraints que funcionam com tipos definidos pelo usuário.
+
+### cmp.Ordered
+
+O pacote `cmp` da biblioteca padrão (adicionado no Go 1.21) exporta uma constraint `Ordered` que cobre todos os tipos que suportam os operadores de ordenação (`<`, `<=`, `>`, `>=`):
+
+```go
+import "cmp"
+
+func Max[T cmp.Ordered](a, b T) T {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+Max(3, 5)         // 5
+Max(3.14, 2.71)   // 3.14
+Max("foo", "bar") // "foo"
+
+```
+
+`cmp.Ordered` se expande para todos os tipos inteiros, float e string — com `~` aplicado a cada um, para que tipos definidos pelo usuário também funcionem. Usá-lo poupa você de escrever essa union manualmente.
+
+<Callout type="note" title="Antes do Go 1.21">
+  Para versões do Go anteriores à 1.21, o pacote `golang.org/x/exp/constraints`
+  fornece `constraints.Ordered`, `constraints.Integer`, `constraints.Float` e
+  outros. Eles são conceitualmente idênticos — mesmas union types, mesmo prefixo
+  `~`.
+</Callout>
+
+## Múltiplos type parameters
+
+Uma lista de type parameters pode incluir mais de um parâmetro, cada um com sua própria constraint:
+
+```go
+func Keys[K comparable, V any](m map[K]V) []K {
+    keys := make([]K, 0, len(m))
+    for k := range m {
+        keys = append(keys, k)
+    }
+    return keys
+}
+
+Keys(map[string]int{"a": 1, "b": 2})  // []string{"a", "b"}
+Keys(map[int]bool{1: true, 2: false}) // []int{1, 2}
+
+```
+
+`K` deve ser `comparable` porque maps exigem chaves comparáveis. `V` pode ser `any` porque a função nunca inspeciona os valores — ela apenas coleta as chaves.
+
+## Generic types
+
+Generics se aplicam a declarações de tipos, não apenas a funções. É assim que você constrói estruturas de dados container com type safety:
+
+```go
+type Stack[T any] struct {
+    items []T
+}
+
+func (s *Stack[T]) Push(v T) {
+    s.items = append(s.items, v)
+}
+
+func (s *Stack[T]) Pop() (T, bool) {
+    if len(s.items) == 0 {
+        var zero T
+        return zero, false
+    }
+    v := s.items[len(s.items)-1]
+    s.items = s.items[:len(s.items)-1]
+    return v, true
+}
+
+func (s *Stack[T]) Len() int {
+    return len(s.items)
+}
+
+```
+
+O type argument é especificado ao declarar uma variável do tipo genérico:
+
+```go
+var ints Stack[int]
+ints.Push(1)
+ints.Push(2)
+ints.Push(3)
+
+v, ok := ints.Pop() // v = 3, ok = true
+
+var strs Stack[string]
+strs.Push("hello")
+strs.Push("world")
+
+```
+
+`Stack[int]` e `Stack[string]` são tipos distintos — o compilador gera código separado para cada um e impõe suas regras de tipos de forma independente.
+
+<Callout type="note" title="Methods não podem adicionar novos type parameters">
+  Um method definido em um tipo genérico pode usar os type parameters declarados
+  no tipo. Ele não pode declarar os seus próprios. Se você precisar de
+  flexibilidade de tipo adicional em um method, escreva uma função genérica no
+  nível do pacote e passe o receiver como argumento.
+</Callout>
+
+## O zero value de um type parameter
+
+Quando uma função precisa retornar "nada" para um tipo desconhecido — em caso de erro ou quando uma busca falha — você precisa do zero value de `T`. O padrão é uma declaração de variável simples:
+
+```go
+func Find[T comparable](s []T, v T) (T, bool) {
+    for _, item := range s {
+        if item == v {
+            return item, true
+        }
+    }
+    var zero T
+    return zero, false
+}
+
+```
+
+`var zero T` inicializa `zero` com o zero value do tipo que `T` vier a ser: `0` para tipos numéricos, `""` para strings, `false` para booleans, `nil` para pointers, slices, maps e channels. Essa é a forma canônica de expressar "zero value de um type parameter".
+
+## Generics na biblioteca padrão
+
+O Go 1.21 adotou generics em toda a biblioteca padrão. Os pacotes `slices` e `cmp` foram adicionados para fornecer utilitários que antes exigiam implementações de `sort.Interface` ou casts inseguros com `interface{}`.
+
+O pacote `slices` cobre as operações mais comuns em slices:
+
+```go
+import "slices"
+
+s := []int{3, 1, 4, 1, 5, 9, 2, 6}
+slices.Sort(s)                           // ordena in place: [1 1 2 3 4 5 6 9]
+min := slices.Min(s)                     // 1
+max := slices.Max(s)                     // 9
+idx, found := slices.BinarySearch(s, 5) // idx=5, found=true
+has := slices.Contains(s, 4)            // true
+
+```
+
+Antes de `slices.Sort`, ordenar exigia `sort.Slice` com uma closure baseada em índices. Com generics, o compilador simplesmente verifica que o tipo do elemento suporta ordenação — sem boilerplate.
+
+O pacote `cmp` fornece utilitários de comparação junto com a constraint `Ordered`:
+
+```go
+import "cmp"
+
+cmp.Compare(3, 5)      // -1  (3 < 5)
+cmp.Compare(5, 5)      //  0
+cmp.Compare("b", "a") //  1  ("b" > "a")
+
+```
+
+Explorar esses pacotes é uma das formas mais eficazes de aprender código genérico idiomático: eles resolvem problemas reais e cotidianos com o mínimo de cerimônia.
+
+## Quando usar generics
+
+Generics brilham quando o mesmo algoritmo funciona para múltiplos tipos e a informação de tipo precisa fluir da entrada para a saída. Os indicadores mais claros são:
+
+- Uma assinatura de função no formato `[]T → T`, `T → T` ou `map[K]V → []K`
+- Uma estrutura de dados que precisa funcionar com tipos de elemento escolhidos pelo usuário
+- A mesma lógica duplicada em múltiplos tipos no seu codebase
+
+Eles **não** são substitutos para interfaces. Se sua função só precisa chamar métodos em um valor, use uma interface comum — é exatamente para isso que interfaces existem:
+
+```go
+// Desnecessário: o generic não adiciona nada sobre a interface
+func WriteJSON[W io.Writer](w W, v any) error { ... }
+
+// Correto: apenas aceite a interface
+func WriteJSON(w io.Writer, v any) error { ... }
+
+```
+
+A regra prática: se o type parameter aparece tanto na entrada quanto na saída de forma que preserve a identidade do tipo, generics são apropriados. Se o type parameter só entra e desaparece em uma interface, uma interface comum é mais limpa.

@@ -1,0 +1,333 @@
+---
+title: HTTP in Go
+description: Learn how to build HTTP clients and servers in Go using the net/http package, from making requests to routing with ServeMux and path wildcards.
+slug: net-http
+publishedAt: '2026-04-29'
+keywords:
+  - golang
+  - net/http
+  - http client
+  - http server
+  - ServeMux
+  - http.Handler
+  - http.Request
+  - http.ResponseWriter
+---
+
+HTTP is the protocol that powers the web. Every API call, every browser request, every webhook — all of it flows through HTTP. Go's `net/http` package is the standard library's answer to working with this protocol, providing everything you need to act as both a client (sending requests to other servers) and a server (receiving and handling requests from clients).
+
+## HTTP fundamentals
+
+HTTP (Hypertext Transfer Protocol) operates at layer 7 of the OSI model — the application layer. It sits on top of transport protocols like TCP, which handle reliability and byte ordering. HTTP's job is narrower: it defines the semantics of requests and responses.
+
+The model is simple. A client sends a request specifying a method (`GET`, `POST`, `PUT`, `DELETE`) and a URL. The server sends back a response with a status code and an optional body. Both sides can attach headers to carry metadata about the message — content type, authentication tokens, cache directives, and so on.
+
+## The HTTP client
+
+### Avoid the default client
+
+The `net/http` package exports a `DefaultClient` and a set of package-level shortcut functions — `http.Get`, `http.Post`, `http.PostForm` — that delegate to it:
+
+```go
+resp, err := http.Get("https://api.example.com/users")
+resp, err := http.Post("https://api.example.com/users", "application/json", body)
+
+```
+
+The problem is that `http.DefaultClient` has no timeout configured. A server that is slow to respond — or never responds — will cause your goroutine to hang indefinitely. In any real application, this is a resource leak that can exhaust your goroutine pool.
+
+<Callout type="warning" title="Never use the default client in production">
+  `http.DefaultClient`, `http.Get`, `http.Post`, and similar package-level
+  functions have no timeout. A stalled remote server will hang your goroutine
+  forever. Always create a custom `http.Client` with an explicit `Timeout`.
+</Callout>
+
+### Creating a client with a timeout
+
+`http.Client` is a struct. Its most important field for correctness is `Timeout`:
+
+```go
+client := &http.Client{
+    Timeout: 10 * time.Second,
+}
+
+```
+
+The timeout covers the entire request lifecycle: DNS lookup, TCP connection, sending headers and body, reading the response headers, and reading the response body. If the total time exceeds `Timeout`, the request is cancelled and `client.Do` returns an error.
+
+### Making requests
+
+For simple GET requests, use the client method directly:
+
+```go
+resp, err := client.Get("https://api.example.com/users")
+if err != nil {
+    log.Fatal(err)
+}
+defer resp.Body.Close()
+
+```
+
+For anything more complex — custom headers, a specific method, a request body — build the request with `http.NewRequest` and execute it with `client.Do`:
+
+```go
+req, err := http.NewRequest(http.MethodPost, "https://api.example.com/users", body)
+if err != nil {
+    log.Fatal(err)
+}
+req.Header.Set("Content-Type", "application/json")
+req.Header.Set("Authorization", "Bearer "+token)
+
+resp, err := client.Do(req)
+if err != nil {
+    log.Fatal(err)
+}
+defer resp.Body.Close()
+
+```
+
+`http.NewRequest` takes a method string, a URL, and an optional `io.Reader` for the body. It returns an `*http.Request` that you can freely annotate with headers, query parameters, or context before handing it to `client.Do`.
+
+### Reading the response body
+
+`resp.Body` is an `io.ReadCloser`. You must always close it — even if you do not intend to read from it — to return the underlying TCP connection to the client's pool:
+
+```go
+defer resp.Body.Close()
+
+data, err := io.ReadAll(resp.Body)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(string(data))
+
+```
+
+### Checking the status code
+
+An HTTP error response (404, 500, etc.) does not produce a Go error from `client.Do`. The returned `error` only represents transport-level failures: DNS resolution failures, connection refused, timeouts, TLS errors. The HTTP status code must be checked separately:
+
+```go
+if resp.StatusCode != http.StatusOK {
+    log.Fatalf("unexpected status: %s", resp.Status)
+}
+
+```
+
+The `net/http` package defines constants for every standard status code: `http.StatusOK` (200), `http.StatusCreated` (201), `http.StatusBadRequest` (400), `http.StatusNotFound` (404), `http.StatusInternalServerError` (500), and many others.
+
+## The HTTP server
+
+### ListenAndServe
+
+`http.ListenAndServe` starts an HTTP server and blocks until it stops:
+
+```go
+func ListenAndServe(addr string, handler http.Handler) error
+
+```
+
+It binds to `addr` (for example `":8080"`) and passes every incoming request to `handler`. If `handler` is `nil`, the server uses `http.DefaultServeMux`. The function only returns when the server encounters a fatal error, so any error it returns is always non-nil:
+
+```go
+if err := http.ListenAndServe(":8080", nil); err != nil {
+    log.Fatal(err)
+}
+
+```
+
+### http.Handler
+
+The central abstraction in `net/http` is the `Handler` interface:
+
+```go
+type Handler interface {
+    ServeHTTP(ResponseWriter, *Request)
+}
+
+```
+
+Any type that implements `ServeHTTP` can act as a handler. The method receives a `ResponseWriter` to write the response and a `*Request` carrying everything about the incoming request.
+
+A few rules govern correct handler behaviour:
+
+- Read from the request before writing to the response.
+- Do not modify the incoming `*Request`.
+- Do not write to `ResponseWriter` or read from `r.Body` after `ServeHTTP` returns.
+- Panics inside handlers are caught and logged by the server; the connection is closed. If you want to abort a request without logging, use `panic(http.ErrAbortHandler)`.
+
+### http.HandlerFunc
+
+Creating a full type just to implement `ServeHTTP` is unnecessary most of the time. The `http.HandlerFunc` adapter converts any function with the right signature into a `Handler`:
+
+```go
+type HandlerFunc func(ResponseWriter, *Request)
+
+func (f HandlerFunc) ServeHTTP(w ResponseWriter, r *Request) {
+    f(w, r)
+}
+
+```
+
+In practice, you write a plain function and cast it:
+
+```go
+func greet(w http.ResponseWriter, r *http.Request) {
+    fmt.Fprintln(w, "Hello!")
+}
+
+http.ListenAndServe(":8080", http.HandlerFunc(greet))
+
+```
+
+`ServeMux.HandleFunc` (covered below) does this cast automatically, so you rarely need to write `http.HandlerFunc(...)` by hand.
+
+### http.ResponseWriter
+
+`ResponseWriter` is an interface with three methods:
+
+```go
+type ResponseWriter interface {
+    Header() http.Header
+    Write([]byte) (int, error)
+    WriteHeader(statusCode int)
+}
+
+```
+
+- `Header()` returns the header map for the response. Set all headers before calling `Write` or `WriteHeader` — after either of those is called, headers have already been sent.
+- `WriteHeader(code)` sends the HTTP status line and headers. It can only be called once; subsequent calls are silently ignored.
+- `Write(data)` writes body bytes. If `WriteHeader` has not been called yet, it implicitly sends a `200 OK`.
+
+```go
+func createUser(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusCreated)
+    w.Write([]byte(`{"status":"created"}`))
+}
+
+```
+
+The `http.Error` helper writes an error message and status code in one call and is the idiomatic way to return errors from handlers:
+
+```go
+http.Error(w, "not found", http.StatusNotFound)
+
+```
+
+### http.Request
+
+`http.Request` is a struct that represents an incoming request on the server side (or an outgoing one on the client side):
+
+```go
+type Request struct {
+    Method string
+    URL    *url.URL
+    Header Header        // map[string][]string
+    Body   io.ReadCloser
+    Form   url.Values
+    // ...
+}
+
+```
+
+Key fields:
+
+- `Method` — the HTTP method as a string (`"GET"`, `"POST"`, etc.). For client requests, an empty string means GET.
+- `URL` — the parsed request URL. Use `r.URL.Path` for the path and `r.URL.Query()` for query parameters.
+- `Header` — request headers as a map. Use `r.Header.Get("Name")` to retrieve a single value.
+- `Body` — for server requests, always non-nil, but returns EOF immediately when no body is present. The server closes the body after the handler returns; you do not need to close it yourself.
+- `Form` — parsed form data (URL query parameters plus body form data). Only populated after calling `r.ParseForm()`.
+
+Reading the request body:
+
+```go
+func createUser(w http.ResponseWriter, r *http.Request) {
+    data, err := io.ReadAll(r.Body)
+    if err != nil {
+        http.Error(w, "failed to read body", http.StatusBadRequest)
+        return
+    }
+    // process data...
+    w.WriteHeader(http.StatusCreated)
+}
+
+```
+
+## ServeMux
+
+### What is ServeMux
+
+`http.ServeMux` is the request router (multiplexer) built into the standard library. It matches incoming request URLs against registered patterns and dispatches to the corresponding handler.
+
+```go
+mux := http.NewServeMux()
+mux.HandleFunc("GET /users", listUsers)
+mux.HandleFunc("POST /users", createUser)
+
+http.ListenAndServe(":8080", mux)
+
+```
+
+`HandleFunc` registers a plain function; `Handle` registers any type implementing `http.Handler`.
+
+### Patterns
+
+Patterns follow the form `[METHOD ][HOST]/[PATH]`. All parts except the path are optional:
+
+| Pattern           | Matches                                    |
+| ----------------- | ------------------------------------------ |
+| `/hello`          | Any method, any host, exact path `/hello`  |
+| `GET /hello`      | GET only, exact path `/hello`              |
+| `GET /hello/`     | GET only, any path starting with `/hello/` |
+| `GET /users/{id}` | GET only, path with a one-segment wildcard |
+
+A trailing slash without a wildcard creates a **subtree pattern** — it matches the given prefix and everything nested beneath it.
+
+### Wildcards
+
+Curly-brace segments are wildcards. A plain wildcard like `{id}` matches exactly one path segment — everything up to the next `/`:
+
+```go
+mux.HandleFunc("GET /users/{id}", func(w http.ResponseWriter, r *http.Request) {
+    id := r.PathValue("id")
+    fmt.Fprintf(w, "user: %s\n", id)
+})
+
+```
+
+A GET to `/users/42` sets `id` to `"42"`. Use `r.PathValue("name")` to retrieve any named wildcard.
+
+A wildcard ending in `...` matches the rest of the path from that segment forward:
+
+```go
+mux.HandleFunc("GET /files/{path...}", func(w http.ResponseWriter, r *http.Request) {
+    path := r.PathValue("path")
+    // GET /files/images/avatar.png → path = "images/avatar.png"
+})
+
+```
+
+The `...` wildcard can only appear at the end of a pattern.
+
+The special wildcard `{$}` matches only the root path `/` exactly. Without it, the pattern `"/"` acts as a catch-all and matches any request that nothing else handles:
+
+```go
+mux.HandleFunc("GET /{$}", homePage)  // only "/"
+mux.HandleFunc("/", notFound)         // catch-all for unmatched paths
+```
+
+### Specificity and conflicts
+
+When more than one pattern matches a request, `ServeMux` selects the most specific one. A pattern with more fixed segments and fewer wildcards is considered more specific:
+
+```go
+mux.HandleFunc("GET /users/{id}", userHandler)
+mux.HandleFunc("GET /users/me", meHandler)    // more specific: no wildcard
+
+// GET /users/me  → meHandler
+// GET /users/42  → userHandler
+
+```
+
+If two patterns have equal specificity and would both match the same request, `ServeMux` panics at registration time — the conflict is caught at startup, not during request handling.

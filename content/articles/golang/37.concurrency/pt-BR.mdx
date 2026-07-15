@@ -1,0 +1,178 @@
+---
+title: Desafios da concorrência
+description: 'Entenda o que é concorrência, por que ela importa para sistemas multi-core e os desafios que ela traz: race conditions, atomicidade e critical sections.'
+slug: concorrencia
+publishedAt: '2026-05-05'
+keywords:
+  - golang
+  - concorrência
+  - goroutines
+  - race condition
+  - atomicidade
+  - critical section
+  - paralelismo
+---
+
+Os computadores modernos já não ficam mais rápidos simplesmente executando uma única instrução mais depressa — eles ficam mais capazes executando múltiplos fluxos ao mesmo tempo. Programas que ignoram isso deixam uma performance considerável na mesa. Concorrência é a ferramenta que o Go oferece para aproveitar esse potencial, mas ela traz um conjunto de desafios que vale a pena entender profundamente antes de escrever uma única goroutine.
+
+## O que é concorrência
+
+Concorrência é sobre estruturar um programa como uma coleção de partes que progridem de forma independente. Em vez de executar tarefas uma após a outra, do início ao fim, um programa concorrente decompõe seu trabalho em partes que podem avançar em janelas de tempo sobrepostas.
+
+Pense em um chef de cozinha preparando vários pratos ao mesmo tempo. Enquanto o macarrão está cozinhando — uma operação que exige espera — o chef corta legumes e mexe o molho. O chef não está fazendo duas coisas exatamente ao mesmo instante: ele está intercalando tarefas para reduzir o tempo total. Essa intercalação é concorrência.
+
+No Go, a unidade primária de trabalho concorrente é a **goroutine**: uma função leve e independentemente agendada. É possível lançar milhares de goroutines com overhead mínimo, e o runtime do Go cuida de agendá-las entre os cores de CPU disponíveis.
+
+## Concorrência não é paralelismo
+
+Rob Pike, um dos criadores do Go, foi direto ao ponto: _"Concorrência é sobre lidar com muitas coisas ao mesmo tempo. Paralelismo é sobre fazer muitas coisas ao mesmo tempo."_
+
+**Concorrência** é uma propriedade de design do seu programa — como ele estrutura o trabalho em partes independentes que podem se sobrepor no tempo.
+
+**Paralelismo** é uma propriedade de runtime — se essas partes estão de fato executando simultaneamente em diferentes cores de CPU.
+
+Em uma máquina com um único core, um programa concorrente continua sendo concorrente. O sistema operacional faz time-slicing do CPU entre as goroutines, alternando rapidamente entre elas. Elas nunca executam no exato mesmo instante, mas progridem de forma intercalada, dando a ilusão de paralelismo.
+
+Em uma máquina multi-core, o runtime do Go pode agendar goroutines para executar em diferentes cores, alcançando paralelismo real. O mesmo programa concorrente agora executa múltiplas coisas fisicamente ao mesmo tempo.
+
+```
+Single core (concorrente, não paralelo):
+
+Time ──────────────────────────────────▶
+Core 0: [G1][G1][G2][G2][G1][G3][G3][G2]
+
+Multi core (concorrente e paralelo):
+
+Time ──────────────────────────────────▶
+Core 0: [G1][G1][G1][G2][G2]
+Core 1: [G2][G3][G3][G1][G3]
+
+```
+
+Essa distinção importa: concorrência é algo que você projeta no seu código. Paralelismo é um benefício que você pode ou não obter em runtime, dependendo do hardware. Um programa bem estruturado para concorrência automaticamente se beneficia do paralelismo em máquinas multi-core — mas a decisão de design vem primeiro.
+
+## Por que concorrência importa
+
+Programas sequenciais são um gargalo em um mundo de processadores multi-core. Um programa que realiza todo o seu trabalho em uma única goroutine usa exatamente um core de CPU — independentemente de quantos cores a máquina tenha. Os demais ficam ociosos.
+
+Concorrência permite que um programa extraia trabalho de todos os cores disponíveis. Um servidor web que trata cada requisição recebida em sua própria goroutine consegue atender milhares de clientes simultâneos, onde um servidor sequencial os enfileiraria e travaria. Um pipeline de dados que processa registros independentes concorrentemente pode ser concluído em uma fração do tempo.
+
+Além da performance bruta, a concorrência também melhora a **responsividade**. Uma interface de usuário que realiza uma requisição de rede em uma goroutine continua interativa enquanto aguarda a resposta. Uma ferramenta de linha de comando que baixa arquivos concorrentemente termina mais cedo sem bloquear em cada um deles.
+
+O Go foi projetado desde o início para tornar a concorrência prática e expressiva. Goroutines são baratas o suficiente para usar livremente, e channels oferecem às goroutines uma forma estruturada de se comunicar. Mas antes de usar essas ferramentas, é preciso entender por que a concorrência introduz problemas.
+
+## O desafio: race conditions
+
+No momento em que duas ou mais goroutines acessam os mesmos dados, as coisas podem dar errado. Uma **race condition** ocorre quando a correção de um programa depende do timing relativo ou da intercalação de goroutines — e esse timing jamais é garantido.
+
+Considere este programa:
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+)
+
+func main() {
+	counter := 0
+	var wg sync.WaitGroup
+
+	for i := 0; i < 1000; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			counter++
+		}()
+	}
+
+	wg.Wait()
+	fmt.Println(counter)
+}
+
+```
+
+A intenção é simples: lançar 1.000 goroutines, cada uma incrementando um counter, e imprimir o valor final. O resultado esperado é `1000`. Na prática, ao executar este programa várias vezes, você obterá valores diferentes — frequentemente menores que 1.000, e nunca de forma confiável correta.
+
+<Callout type="note" title="sync.WaitGroup">
+  `sync.WaitGroup` é usado aqui para aguardar que todas as goroutines terminem
+  antes de imprimir. Você chama `wg.Add(1)` antes de lançar cada goroutine e
+  `wg.Done()` quando ela termina. `wg.Wait()` bloqueia até que a contagem
+  interna chegue a zero. Vamos explorá-lo completamente em um artigo futuro —
+  por enquanto, trate-o como um mecanismo de "espere todo mundo terminar".
+</Callout>
+
+O motivo pelo qual o resultado está errado é que `counter++` não é um único passo indivisível. Isso nos leva diretamente ao conceito de atomicidade.
+
+## Atomicidade
+
+Uma operação é **atômica** se ela aparece para o restante do sistema como um único passo instantâneo — ela acontece completamente ou não acontece, sem estado intermediário observável.
+
+A expressão `counter++` parece uma coisa só, mas se decompõe em três operações distintas em nível de máquina:
+
+1. **Leitura** do valor atual de `counter` da memória
+2. **Soma** de 1 a esse valor
+3. **Escrita** do novo valor de volta para a memória
+
+Em uma única goroutine, esses três passos acontecem em sequência sem interrupção, então o resultado é sempre correto. Com múltiplas goroutines, o scheduler do Go pode intercalar esses passos em qualquer ordem. Veja um cenário problemático com duas goroutines:
+
+```
+Goroutine A lê counter: 42
+Goroutine B lê counter: 42      ← B lê antes de A escrever
+Goroutine A soma 1, escreve: 43
+Goroutine B soma 1, escreve: 43 ← B sobrescreve o resultado de A
+
+Counter final: 43, não 44
+
+```
+
+Ambas as goroutines leram o mesmo valor, ambas calcularam `42 + 1 = 43` e ambas escreveram `43`. Um incremento foi silenciosamente perdido. Esse cenário pode acontecer centenas de vezes ao longo de 1.000 goroutines, o que explica por que a contagem final é consistentemente menor que o esperado.
+
+Bancos de dados lidam com isso através de **transactions**: um grupo de operações garantidas para executar atomicamente. Ou todas elas têm sucesso, ou nenhuma delas tem efeito. O Go tem suas próprias ferramentas para alcançar atomicidade — o pacote `sync/atomic` para valores individuais e `sync.Mutex` para proteger blocos maiores de código — mas o insight principal é que você deve optar explicitamente pela atomicidade. A linguagem não te protege por padrão.
+
+<Callout type="warning" title="Operações compostas não são atômicas">
+  Qualquer expressão que envolva mais de um passo em nível de máquina —
+  incluindo `counter++`, `x += n` e `m[key] = v` em um map compartilhado — não é
+  atômica. Não assuma que "parecer simples" significa "seguro para uso
+  concorrente".
+</Callout>
+
+## Critical sections
+
+Uma **critical section** é qualquer parte do seu código que acessa ou modifica dados compartilhados — dados que múltiplas goroutines podem alcançar ao mesmo tempo. No exemplo do counter, a única linha `counter++` é uma critical section. Em um programa mais complexo, uma critical section pode abranger várias linhas: ler um valor, calcular um novo, escrever de volta e atualizar estados relacionados.
+
+Identificar critical sections é o primeiro e mais importante passo para escrever código concorrente correto. Uma critical section não é definida por quantas linhas ela contém — é definida por se ela toca estado mutável compartilhado.
+
+```go
+// Não é uma critical section: result é local, não compartilhado
+func square(n int) int {
+	result := n * n
+	return result
+}
+
+// Critical section: counter é compartilhado entre goroutines
+func increment(counter *int) {
+	*counter++ // deve ser protegido
+}
+
+```
+
+Critical sections devem ser **protegidas**: apenas uma goroutine deve executá-las por vez. Código que não está em uma critical section — trabalho que opera em dados locais, pertencentes à goroutine — não precisa de proteção e pode executar livremente em paralelo.
+
+O desafio é que critical sections nem sempre são óbvias. Uma chamada de função pode alcançar estado compartilhado através de um pointer vários níveis abaixo. Uma busca em um map pode parecer somente leitura, mas entrar em panic com escritas concorrentes. Cultivar o hábito de perguntar "isso toca dados que outra goroutine pode ver?" é a disciplina mais útil para programação concorrente.
+
+<Callout type="note" title="O race detector do Go">
+  O Go vem com um race detector embutido. Execute seu programa com `go run
+  -race` ou `go test -race` para detectar automaticamente data races em runtime.
+  Ele não captura todas as races possíveis — apenas as que de fato ocorrem
+  durante uma execução específica — mas é uma ferramenta inestimável para
+  encontrar bugs que de outra forma seriam quase impossíveis de reproduzir de
+  forma consistente.
+</Callout>
+
+## O que vem a seguir
+
+Entender race conditions, atomicidade e critical sections fornece a base conceitual para tudo que vem a seguir. O próximo passo é aprender as ferramentas que o Go oferece para proteger critical sections e coordenar goroutines com segurança: goroutines em profundidade, channels, `sync.Mutex`, `sync.WaitGroup` e o pacote `sync/atomic`.
+
+Os desafios são reais, mas o modelo de concorrência do Go foi projetado para torná-los gerenciáveis. Entender os problemas claramente é o pré-requisito para usar as soluções bem.

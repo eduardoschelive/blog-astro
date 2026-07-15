@@ -1,0 +1,227 @@
+---
+title: Break, continue, labels e goto
+description: Aprenda a controlar o fluxo de loops em Go com break e continue, como labels os estendem para loops aninhados, e onde o goto se encaixa — e quando evitá-lo.
+slug: break-continue-labels-goto
+publishedAt: '2026-04-13'
+keywords:
+  [
+    golang,
+    go break,
+    go continue,
+    go labels,
+    go goto,
+    go loop control,
+    go nested loops,
+    go flow control,
+  ]
+---
+
+## Controlando o fluxo dentro de loops
+
+Loops raramente executam do início ao fim sem nenhuma intervenção. Programas reais precisam sair cedo quando uma correspondência é encontrada, pular iterações que não atendem a uma condição, ou sair de loops profundamente aninhados em um único movimento. Go fornece quatro constructs para isso: `break`, `continue`, `goto` e labels.
+
+Este artigo cobre cada um em profundidade — o que fazem, onde são genuinamente úteis, e onde devem ser evitados.
+
+## O statement break
+
+`break` termina o `for` loop mais interno imediatamente. A execução continua com o código que vem após o loop.
+
+```go
+for i := 0; i < 10; i++ {
+    if i == 5 {
+        break
+    }
+    fmt.Println(i)
+}
+// prints: 0 1 2 3 4
+```
+
+O loop normalmente executaria dez vezes, mas no momento em que `i` é igual a `5` o `break` é disparado e o loop termina. O `fmt.Println` nessa iteração nunca executa, e tampouco as iterações restantes.
+
+### Simulando um loop do-while
+
+Go não tem o construct `do-while`, mas `break` permite replicar o padrão. Um `do-while` executa o corpo pelo menos uma vez e verifica a condição no final. Aqui está o equivalente idiomático em Go:
+
+```go
+for {
+    input := readInput()
+    if isValid(input) {
+        break
+    }
+    fmt.Println("Invalid input, try again.")
+}
+```
+
+O `for` loop infinito garante que o corpo execute pelo menos uma vez. A condição é testada no final usando `if` + `break`. Este é um padrão comum ao ler input do usuário ou fazer polling de um recurso.
+
+<Callout type="note" title="break e switch">
+  `break` também termina um case de `switch` antecipadamente, embora raramente
+  seja necessário — cases em Go não têm fall-through por padrão. O comportamento
+  é o mesmo: ele sai do bloco `switch` imediatamente envolvente.
+</Callout>
+
+## O statement continue
+
+`continue` pula o restante da iteração atual e avança diretamente para a próxima. O loop em si continua executando — apenas o passo atual é interrompido.
+
+```go
+for i := 0; i < 10; i++ {
+    if i%2 == 0 {
+        continue
+    }
+    fmt.Println(i)
+}
+// prints: 1 3 5 7 9
+```
+
+Quando `i` é par, `continue` volta para o cabeçalho do loop (`i++`, depois a verificação da condição). O `fmt.Println` só é alcançado para valores ímpares.
+
+Isso é frequentemente mais limpo do que aninhar todo o corpo do loop dentro de um `if`. Compare:
+
+```go
+// with continue — flat structure
+for _, v := range values {
+    if v < 0 {
+        continue
+    }
+    process(v)
+}
+
+// without continue — nested structure
+for _, v := range values {
+    if v >= 0 {
+        process(v)
+    }
+}
+```
+
+Ambos são equivalentes, mas a versão com `continue` mantém o código do "caminho feliz" no nível superior e torna a condição de guarda explícita no início do corpo. Para corpos de loop longos, isso reduz o aninhamento e melhora a legibilidade.
+
+## Labels
+
+Por padrão, `break` e `continue` afetam apenas o loop em que estão fisicamente inseridos. Quando você tem loops aninhados, essa limitação se torna um problema: se quiser sair do loop externo a partir do interno, um `break` simples não resolve.
+
+Labels resolvem isso. Um label é um identificador seguido de dois-pontos, colocado imediatamente antes de um statement `for`:
+
+```go
+outer:
+for i := 0; i < 3; i++ {
+    for j := 0; j < 3; j++ {
+        if i == 1 && j == 1 {
+            break outer
+        }
+        fmt.Printf("i=%d j=%d\n", i, j)
+    }
+}
+```
+
+Saída:
+
+```
+i=0 j=0
+i=0 j=1
+i=0 j=2
+i=1 j=0
+```
+
+Quando `i == 1` e `j == 1`, `break outer` sai do loop com label `outer` — não apenas do `for` interno. Sem o label, `break` só sairia do loop interno, e o loop externo continuaria a partir de `i=1, j=2`.
+
+Labels funcionam de forma idêntica com `continue`:
+
+```go
+outer:
+for i := 0; i < 3; i++ {
+    for j := 0; j < 3; j++ {
+        if j == 1 {
+            continue outer
+        }
+        fmt.Printf("i=%d j=%d\n", i, j)
+    }
+}
+```
+
+Saída:
+
+```
+i=0 j=0
+i=1 j=0
+i=2 j=0
+```
+
+`continue outer` pula o restante do loop interno e avança a iteração do loop externo. Para cada valor de `i`, apenas `j=0` é impresso — assim que `j` chega a `1`, o loop externo avança.
+
+<Callout type="note" title="Labels são raros em Go">
+  Usar labels é perfeitamente válido, mas incomum no código Go típico. A maioria
+  dos loops tem uma estrutura plana ou pouco aninhada onde `break` e `continue`
+  simples são suficientes. Quando você se pegar precisando de labels, considere
+  se extrair o loop interno para uma função tornaria o código mais claro.
+</Callout>
+
+## O statement goto
+
+`goto` transfere o controle incondicionalmente para um statement com label em qualquer outra parte da mesma função. Ao contrário de `break` e `continue` — que só interagem com loops — `goto` pode pular para qualquer ponto com label no corpo da função.
+
+```go
+func main() {
+    i := 0
+loop:
+    if i < 5 {
+        fmt.Println(i)
+        i++
+        goto loop
+    }
+}
+```
+
+Isso imprime de `0` a `4`. O `goto loop` volta para o label `loop:`, reavaliando a condição do `if` a cada passo. O efeito é o mesmo que um `for` loop, apenas escrito de forma mais indireta.
+
+### Restrições sobre goto
+
+Go impõe duas restrições rígidas ao `goto` para evitar os tipos mais perigosos de saltos:
+
+**1. Não é permitido pular sobre uma declaração de variável.**
+
+```go
+goto end
+x := 10    // error: goto end jumps over declaration of x
+end:
+fmt.Println(x)
+```
+
+Se isso fosse permitido, `x` estaria no escopo em `end:` mas nunca teria sido inicializado, levando ao uso de uma variável não inicializada.
+
+**2. Não é permitido pular para dentro de um bloco interno ou do mesmo nível.**
+
+```go
+goto inside
+{
+inside: // error: goto inside jumps into block
+    fmt.Println("inside")
+}
+```
+
+Pular para dentro de um bloco ignoraria a inicialização de qualquer variável declarada no início desse bloco.
+
+### Quando goto é (raramente) apropriado
+
+Em Go, `goto` praticamente não é usado em código de aplicação. O loop `for`, `break` e `continue` cobrem todas as necessidades de iteração. O caso de uso legítimo mais comum aparece em código de baixo nível ou gerado, onde uma estrutura plana com saltos explícitos é mais eficiente ou mais fácil de produzir do que um loop estruturado.
+
+<Callout type="warning" title="Evite goto em código de aplicação">
+  `goto` torna o fluxo de controle difícil de rastrear. Um leitor precisa
+  percorrer toda a função para entender onde cada label está e quais saltos
+  levam até ele. Prefira loops estruturados e returns antecipados. Se sentir
+  vontade de usar `goto`, a função provavelmente está fazendo coisas demais e
+  deveria ser dividida.
+</Callout>
+
+## Resumo
+
+| Statement        | Escopo                         | Efeito                                     |
+| ---------------- | ------------------------------ | ------------------------------------------ |
+| `break`          | Loop ou `switch` mais interno  | Sai imediatamente                          |
+| `break label`    | Loop nomeado pelo label        | Sai daquele loop específico                |
+| `continue`       | Loop mais interno              | Pula para a próxima iteração               |
+| `continue label` | Loop nomeado pelo label        | Pula para a próxima iteração daquele loop  |
+| `goto label`     | Qualquer label na mesma função | Salta incondicionalmente para aquele label |
+
+`break` e `continue` são ferramentas do dia a dia — use-os livremente para manter os corpos de loop planos e legíveis. Labels são válidos, mas incomuns; recorra a eles quando loops aninhados genuinamente precisam de controle entre níveis. `goto` quase nunca é a escolha certa em código de aplicação; se você se pegar escrevendo-o, dê um passo atrás e reconsidere a estrutura da sua função.

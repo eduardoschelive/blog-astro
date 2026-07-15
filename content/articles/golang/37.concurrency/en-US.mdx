@@ -1,0 +1,176 @@
+---
+title: Concurrency challenges
+description: 'Understand what concurrency is, why it matters for multi-core systems, and the challenges it introduces: race conditions, atomicity, and critical sections.'
+slug: concurrency
+publishedAt: '2026-05-05'
+keywords:
+  - golang
+  - concurrency
+  - goroutines
+  - race condition
+  - atomicity
+  - critical section
+  - parallelism
+---
+
+Modern computers no longer get faster by running a single instruction stream more quickly — they get more capable by running multiple streams at once. Programs that ignore this leave substantial performance on the table. Concurrency is the tool Go gives you to take advantage of it, but it comes with a set of challenges that are worth understanding deeply before writing a single goroutine.
+
+## What is concurrency
+
+Concurrency is about structuring a program as a collection of independently progressing pieces. Rather than executing tasks one after another from start to finish, a concurrent program decomposes its work into parts that can make progress in overlapping time windows.
+
+Think of a chef in a kitchen preparing multiple dishes simultaneously. While the pasta is boiling — an operation that requires waiting — the chef chops vegetables and stirs the sauce. The chef is not doing two things at the exact same instant: they are interleaving tasks to keep the total time down. That interleaving is concurrency.
+
+In Go, the primary unit of concurrent work is the **goroutine**: a lightweight, independently scheduled function. You can launch thousands of goroutines with minimal overhead, and the Go runtime handles scheduling them across the available CPU cores.
+
+## Concurrency is not parallelism
+
+Rob Pike, one of Go's creators, put it clearly: _"Concurrency is about dealing with lots of things at once. Parallelism is about doing lots of things at once."_
+
+**Concurrency** is a design property of your program — how it structures work into independent pieces that can overlap in time.
+
+**Parallelism** is a runtime property — whether those pieces are actually executing simultaneously on different CPU cores.
+
+On a single-core machine, a concurrent program is still concurrent. The operating system time-slices the CPU between goroutines, switching rapidly between them. They never run at the exact same instant, but they make progress in an interleaved fashion, giving the illusion of parallelism.
+
+On a multi-core machine, the Go runtime can schedule goroutines to run on different cores, achieving true parallelism. The same concurrent program now physically executes multiple things at once.
+
+```
+Single core (concurrent, not parallel):
+
+Time ──────────────────────────────────▶
+Core 0: [G1][G1][G2][G2][G1][G3][G3][G2]
+
+Multi core (concurrent and parallel):
+
+Time ──────────────────────────────────▶
+Core 0: [G1][G1][G1][G2][G2]
+Core 1: [G2][G3][G3][G1][G3]
+
+```
+
+This distinction matters: concurrency is something you design into your code. Parallelism is a benefit you may or may not get at runtime, depending on the hardware. A program that is well-structured for concurrency automatically benefits from parallelism on multi-core machines — but the design decision comes first.
+
+## Why concurrency matters
+
+Sequential programs are a bottleneck in a world of multi-core processors. A program that performs all its work on a single goroutine uses exactly one CPU core, no matter how many cores the machine has. The rest sit idle.
+
+Concurrency allows a program to extract work from all available cores. A web server that handles each incoming request in its own goroutine can serve thousands of simultaneous clients where a sequential server would queue them and grind to a halt. A data pipeline that processes independent records concurrently can complete in a fraction of the time.
+
+Beyond raw throughput, concurrency also improves **responsiveness**. A user interface that performs a network request in a goroutine stays interactive while waiting for the response. A CLI tool that downloads files concurrently finishes earlier without blocking on each one.
+
+Go was designed from the start to make concurrency practical and expressive. Goroutines are cheap enough to use liberally, and channels give goroutines a structured way to communicate. But before using those tools, you need to understand why concurrency introduces problems in the first place.
+
+## The challenge: race conditions
+
+The moment two or more goroutines access the same data, things can go wrong. A **race condition** occurs when the correctness of a program depends on the relative timing or interleaving of goroutines — and that timing is never guaranteed.
+
+Consider this program:
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+)
+
+func main() {
+	counter := 0
+	var wg sync.WaitGroup
+
+	for i := 0; i < 1000; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			counter++
+		}()
+	}
+
+	wg.Wait()
+	fmt.Println(counter)
+}
+
+```
+
+The intent is simple: launch 1,000 goroutines, each incrementing a counter, and print the final value. The expected result is `1000`. In practice, running this program multiple times produces different values — often less than 1,000, and never reliably correct.
+
+<Callout type="note" title="sync.WaitGroup">
+  `sync.WaitGroup` is used here to wait for all goroutines to finish before
+  printing. You call `wg.Add(1)` before launching each goroutine and `wg.Done()`
+  when it finishes. `wg.Wait()` blocks until the internal count reaches zero.
+  We'll explore it fully in a later article — for now, treat it as a "wait for
+  everyone to finish" mechanism.
+</Callout>
+
+The reason the result is wrong is that `counter++` is not a single, indivisible step. This leads directly to the concept of atomicity.
+
+## Atomicity
+
+An operation is **atomic** if it appears to the rest of the system as a single, instantaneous step — it either happens completely or not at all, with no observable intermediate state.
+
+The expression `counter++` looks like one thing, but it decomposes into three distinct machine-level operations:
+
+1. **Read** the current value of `counter` from memory
+2. **Add** 1 to that value
+3. **Write** the new value back to memory
+
+On a single goroutine, those three steps happen in sequence with no interruption, so the result is always correct. With multiple goroutines, the Go scheduler can interleave these steps in any order. Here is one problematic scenario with two goroutines:
+
+```
+Goroutine A reads counter: 42
+Goroutine B reads counter: 42      ← B reads before A writes
+Goroutine A adds 1, writes: 43
+Goroutine B adds 1, writes: 43     ← B overwrites A's result
+
+Final counter: 43, not 44
+
+```
+
+Both goroutines read the same value, both computed `42 + 1 = 43`, and both wrote back `43`. One increment was silently lost. This scenario can happen hundreds of times across 1,000 goroutines, which explains why the final count is consistently lower than expected.
+
+Databases handle this with **transactions**: a group of operations that are guaranteed to execute atomically. Either all of them succeed, or none of them take effect. Go has its own tools for achieving atomicity — the `sync/atomic` package for individual values, and `sync.Mutex` for protecting larger blocks of code — but the key insight is that you must explicitly opt in to atomicity. The language does not protect you by default.
+
+<Callout type="warning" title="Compound operations are not atomic">
+  Any expression that involves more than one machine-level step — including
+  `counter++`, `x += n`, and `m[key] = v` on a shared map — is not atomic. Do
+  not assume that "looking simple" means "safe to use concurrently".
+</Callout>
+
+## Critical sections
+
+A **critical section** is any part of your code that accesses or modifies shared data — data that multiple goroutines can reach at the same time. In the counter example, the single line `counter++` is a critical section. In a more complex program, a critical section might span several lines: reading a value, computing a new one, writing it back, and updating related state.
+
+Identifying critical sections is the first and most important step in writing correct concurrent code. A critical section is not defined by how many lines it contains — it is defined by whether it touches shared mutable state.
+
+```go
+// Not a critical section: result is local, not shared
+func square(n int) int {
+	result := n * n
+	return result
+}
+
+// Critical section: counter is shared across goroutines
+func increment(counter *int) {
+	*counter++ // must be protected
+}
+
+```
+
+Critical sections must be **protected**: only one goroutine should execute them at a time. Code outside a critical section — work that operates on local, goroutine-owned data — needs no protection and can run freely in parallel.
+
+The challenge is that critical sections are not always obvious. A function call might reach shared state through a pointer several levels deep. A map lookup might look read-only but panic under concurrent writes. Building a habit of asking "does this touch data that another goroutine can see?" is the single most useful discipline for concurrent programming.
+
+<Callout type="note" title="Go's race detector">
+  Go ships with a built-in race detector. Run your program with `go run -race`
+  or `go test -race` to automatically detect data races at runtime. It does not
+  catch every possible race — only those that actually occur during a particular
+  execution — but it is an invaluable tool for finding bugs that are otherwise
+  nearly impossible to reproduce consistently.
+</Callout>
+
+## What comes next
+
+Understanding race conditions, atomicity, and critical sections gives you the conceptual foundation for everything that follows. The next step is learning the tools Go provides to protect critical sections and coordinate goroutines safely: goroutines in depth, channels, `sync.Mutex`, `sync.WaitGroup`, and the `sync/atomic` package.
+
+The challenges are real, but Go's concurrency model is designed to make them manageable. Understanding the problems clearly is the prerequisite to using the solutions well.

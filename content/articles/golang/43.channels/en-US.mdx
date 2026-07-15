@@ -1,0 +1,355 @@
+---
+title: Channels
+description: Learn how Go channels enable safe communication between goroutines — creation, direction, blocking semantics, buffering, and ownership patterns.
+slug: channels
+publishedAt: '2026-05-06'
+keywords:
+  - golang
+  - channels
+  - goroutines
+  - concurrency
+  - chan
+  - buffered channels
+  - channel direction
+---
+
+Go's approach to concurrency rests on a simple but powerful idea: instead of having goroutines share a variable and coordinate access with locks, let them communicate by passing values through a channel. The Go team phrases this as "don't communicate by sharing memory; share memory by communicating." Channels are the mechanism that makes this possible — a typed conduit through which goroutines can send and receive values, with synchronization built in.
+
+## Creating a channel
+
+A channel is a first-class value in Go. You declare its type with the `chan` keyword followed by the element type, and you create it with `make`:
+
+```go
+ch := make(chan string)
+
+```
+
+This creates an unbuffered channel of strings. The type constraint is strict — you can only send and receive values of the declared type. A `chan string` will not accept an `int`, and the compiler enforces this.
+
+Channels are reference types, like slices and maps. The variable `ch` holds a pointer to the channel's internal data structure. Passing a channel to a function doesn't copy the channel — both sides operate on the same conduit.
+
+## Sending and receiving
+
+The `<-` operator is used for both sending and receiving. The direction of the arrow tells you which operation is happening:
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+	ch := make(chan string)
+
+	go func() {
+		ch <- "hello" // send: value goes into the channel
+	}()
+
+	msg := <-ch // receive: value comes out of the channel
+	fmt.Println(msg)
+}
+
+```
+
+The arrow always points in the direction of data flow: `ch <- value` sends `value` into `ch`, and `<-ch` takes a value out of `ch`. Reading from a channel (`<-ch`) can appear on the right-hand side of an assignment or on its own when you want to discard the value.
+
+## Blocking behavior
+
+Channels are not just a data transport — they are a synchronization mechanism. Sending and receiving on an unbuffered channel are **blocking operations**:
+
+- A send blocks until another goroutine is ready to receive.
+- A receive blocks until another goroutine is ready to send.
+
+This is what made the example above work: the main goroutine blocks at `<-ch` until the spawned goroutine executes `ch <- "hello"`. Neither side makes progress until both are ready. This is sometimes called a **rendezvous**.
+
+```go
+package main
+
+import (
+	"fmt"
+	"time"
+)
+
+func worker(ch chan string) {
+	time.Sleep(500 * time.Millisecond)
+	ch <- "work done"
+}
+
+func main() {
+	ch := make(chan string)
+	go worker(ch)
+
+	fmt.Println("waiting...")
+	result := <-ch // blocks here until worker sends
+	fmt.Println(result)
+}
+
+```
+
+The main goroutine prints "waiting..." immediately, then blocks. Half a second later, the worker sends its result, unblocking the receive. Channels give you synchronization without a single call to a mutex or `time.Sleep`.
+
+## Unidirectional channels
+
+A channel created with `make(chan T)` is bidirectional — any goroutine with a reference to it can send or receive. In practice, most channels are used in one direction only: one goroutine sends, another receives. Go lets you express this intent with directional channel types:
+
+| Type       | Direction     | Description          |
+| ---------- | ------------- | -------------------- |
+| `chan T`   | bidirectional | can send and receive |
+| `chan<- T` | send-only     | can only send        |
+| `<-chan T` | receive-only  | can only receive     |
+
+Unidirectional channels are most useful as function parameter types. They document intent and let the compiler prevent misuse:
+
+```go
+package main
+
+import "fmt"
+
+// producer can only send on results
+func producer(results chan<- int) {
+	for i := 0; i < 5; i++ {
+		results <- i
+	}
+	close(results)
+}
+
+// consumer can only receive from results
+func consumer(results <-chan int) {
+	for v := range results {
+		fmt.Println(v)
+	}
+}
+
+func main() {
+	ch := make(chan int)
+	go producer(ch) // chan int → chan<- int: implicit conversion
+	consumer(ch)    // chan int → <-chan int: implicit conversion
+}
+
+```
+
+The conversion from a bidirectional channel to a unidirectional one is implicit — you don't need a cast. The reverse is not allowed: you cannot convert a `chan<- int` back to a `chan int`. Trying to receive from a `chan<- int` or send to a `<-chan int` is a compile error.
+
+<Callout type="note" title="Unidirectional channels communicate intent">
+Declaring a parameter as `chan<- T` or `<-chan T` is a form of documentation that the compiler enforces. It makes the data flow of a function immediately visible and prevents subtle bugs where a goroutine accidentally reads its own writes.
+</Callout>
+
+## Closing a channel
+
+When a sender is done, it can signal this by closing the channel:
+
+```go
+close(ch)
+
+```
+
+Closing a channel has two important effects. First, any goroutine that was blocked waiting to receive from the channel is unblocked immediately and receives the zero value of the channel's element type. Second, all subsequent receives also return the zero value.
+
+To distinguish "received a real zero value" from "channel was closed and drained", the receive expression supports a two-value form:
+
+```go
+v, ok := <-ch
+
+```
+
+`ok` is `true` if a real value was received, and `false` if the channel is closed and empty. This mirrors the two-value map lookup pattern.
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+	ch := make(chan int, 3)
+	ch <- 10
+	ch <- 20
+	close(ch)
+
+	for {
+		v, ok := <-ch
+		if !ok {
+			fmt.Println("channel closed")
+			break
+		}
+		fmt.Println("received:", v)
+	}
+}
+
+```
+
+<Callout type="warning" title="Never close a channel from the receiver side">
+  Closing a channel signals that no more values will be sent. Only the sender
+  knows when it's done sending, so closing should always be the sender's
+  responsibility. Closing a channel that another goroutine might still try to
+  write to causes a panic. Closing an already-closed channel also panics.
+</Callout>
+
+## Ranging over a channel
+
+The manual `v, ok := <-ch` loop is verbose. The `for range` clause handles it cleanly — it reads values until the channel is closed:
+
+```go
+package main
+
+import "fmt"
+
+func generate(ch chan<- int, n int) {
+	for i := 0; i < n; i++ {
+		ch <- i
+	}
+	close(ch)
+}
+
+func main() {
+	ch := make(chan int)
+	go generate(ch, 5)
+
+	for v := range ch {
+		fmt.Println(v)
+	}
+	fmt.Println("done")
+}
+
+```
+
+Unlike ranging over a map (which yields key and value), ranging over a channel yields a single value per iteration. The loop exits automatically when the channel is closed and drained. If the channel is never closed, `for range` blocks forever — a deadlock.
+
+Closing a channel is also a broadcast mechanism: it simultaneously unblocks every goroutine that is waiting to receive. This makes it useful as a "done" signal in fan-out patterns:
+
+```go
+done := make(chan struct{})
+
+// launch N workers, each receiving from done
+for i := 0; i < 3; i++ {
+	go func() {
+		<-done // blocks until done is closed
+		fmt.Println("shutting down")
+	}()
+}
+
+close(done) // unblocks all three goroutines at once
+
+```
+
+`chan struct{}` is the idiomatic type for signal-only channels — a struct with no fields occupies zero bytes and communicates that the value itself doesn't matter, only the event.
+
+## Buffered channels
+
+All the examples so far used **unbuffered** channels, where every send must be paired with a simultaneous receive. Go also supports **buffered** channels, created by passing a capacity to `make`:
+
+```go
+ch := make(chan string, 3) // buffered channel with capacity 3
+
+```
+
+A buffered channel has an internal queue. Sends don't block as long as the buffer isn't full; receives don't block as long as the buffer isn't empty:
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+	ch := make(chan int, 3)
+
+	ch <- 1 // does not block — buffer has space
+	ch <- 2 // does not block
+	ch <- 3 // does not block
+	// ch <- 4 would block — buffer is full
+
+	fmt.Println(<-ch) // 1
+	fmt.Println(<-ch) // 2
+	fmt.Println(<-ch) // 3
+}
+
+```
+
+Buffered channels decouple the sender from the receiver. The sender can produce a burst of values without waiting for the receiver to process each one immediately. This is useful for bounding the number of goroutines in flight, absorbing spikes in a pipeline, or implementing simple work queues.
+
+<Callout
+  type="note"
+  title="Buffering is not a substitute for proper synchronization"
+>
+  A common mistake is to use a large buffer to hide a synchronization problem.
+  If your program only works correctly with a buffer of exactly N, that's
+  usually a sign of a subtle race rather than a good design. Use buffers to
+  improve throughput, not to paper over coordination issues.
+</Callout>
+
+## Nil channels
+
+The zero value of a channel is `nil`. A nil channel has well-defined, if surprising, behavior:
+
+- **Sending** to a nil channel blocks forever.
+- **Receiving** from a nil channel blocks forever.
+- **Closing** a nil channel panics.
+
+```go
+var ch chan int // nil
+ch <- 1        // blocks forever (deadlock if no other goroutines)
+<-ch           // blocks forever
+close(ch)      // panic: close of nil channel
+
+```
+
+Blocking forever sounds useless, but it is deliberately useful in `select` statements. A `select` case on a nil channel is never selected, which gives you a way to dynamically disable a case:
+
+```go
+var ticker <-chan time.Time // nil — case is never selected
+if enableTicker {
+	ticker = time.After(1 * time.Second)
+}
+select {
+case <-ticker:
+	// only runs if ticker was set
+case result := <-work:
+	process(result)
+}
+
+```
+
+Setting a channel variable to nil effectively removes that case from a select, without restructuring the code.
+
+## Channel ownership
+
+As channels get passed around goroutines, it becomes important to establish clear ownership rules. The pattern that prevents the most bugs is:
+
+- The **goroutine that creates a channel** is responsible for writing to it and closing it when done.
+- **Readers** should handle the possibility that the channel will be closed.
+
+```go
+package main
+
+import "fmt"
+
+// owner creates, writes to, and closes the channel
+func owner() <-chan int {
+	ch := make(chan int)
+	go func() {
+		defer close(ch)
+		for i := 0; i < 5; i++ {
+			ch <- i
+		}
+	}()
+	return ch // returns read-only view to the caller
+}
+
+func main() {
+	// consumer only has a receive-only reference
+	for v := range owner() {
+		fmt.Println(v)
+	}
+}
+
+```
+
+By returning a `<-chan int` instead of `chan int`, `owner` prevents the caller from accidentally sending to or closing the channel. The close is encapsulated inside `owner`, guaranteed by `defer`. The consumer only needs to read and handle the channel closing — which `for range` does automatically.
+
+This pattern — owner creates and closes, consumer reads and responds to close — is the foundation of most channel-based pipelines in Go.
+
+## What this means in practice
+
+Channels are Go's primary tool for safe communication between goroutines. They replace shared variables with explicit message passing, turning coordination problems into data-flow problems.
+
+Unbuffered channels synchronize sender and receiver at every exchange — use them when the timing matters, when you want one goroutine to hand off work to another and confirm receipt. Buffered channels decouple timing — use them when you need throughput and the receiver can lag behind temporarily.
+
+Keep ownership clear: one goroutine writes and closes, others only read. This single rule prevents the most common channel bugs — panics from double-close, deadlocks from unclosed channels, and data corruption from unexpected writes after close.

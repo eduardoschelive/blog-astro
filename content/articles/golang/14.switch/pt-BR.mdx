@@ -1,0 +1,202 @@
+---
+title: O statement switch
+description: O switch do Go é mais limpo e poderoso do que na maioria das linguagens. Aprenda como ele lida com múltiplos caminhos, inicialização, cases com múltiplas condições e fallthrough.
+slug: switch
+publishedAt: '2026-04-13'
+keywords:
+  [
+    golang,
+    go switch,
+    go switch statement,
+    go fallthrough,
+    go switch case,
+    go multi-condition case,
+    go switch init,
+  ]
+---
+
+## Quando há caminhos demais
+
+A cadeia `if`/`else` funciona bem para duas ou três condições, mas degrada rapidamente. A partir do quarto branch, a estrutura se torna difícil de percorrer e o leitor perde de vista qual é o valor central sendo comparado. O statement `switch` é a resposta para esse problema: ele torna explícito o sujeito da comparação, agrupa cada resultado possível em seu próprio case nomeado e mantém o código plano.
+
+O `switch` do Go é mais capaz do que o que você pode conhecer de C ou Java. Cases não têm fall-through por padrão, cada case tem seu próprio escopo, um único case pode corresponder a múltiplos valores e — assim como o `for` — o statement suporta uma cláusula de inicialização. Essas pequenas diferenças somam um construct genuinamente agradável de usar.
+
+## Switch básico
+
+A forma mais simples recebe uma expressão e a compara contra uma lista de valores:
+
+```go
+day := "Tuesday"
+
+switch day {
+case "Monday":
+    fmt.Println("Start of the work week")
+case "Tuesday", "Wednesday", "Thursday":
+    fmt.Println("Midweek")
+case "Friday":
+    fmt.Println("Almost there")
+default:
+    fmt.Println("Weekend")
+}
+
+```
+
+O `switch` avalia `day` uma vez e verifica cada `case` em ordem, de cima para baixo. O primeiro case que corresponder executa e o controle sai de todo o bloco `switch` — sem necessidade de `break`. Se nenhum case corresponder, o `default` executa. O `default` é opcional e pode aparecer em qualquer posição da lista, embora colocá-lo por último seja o padrão convencional.
+
+<Callout type="note" title="Sem fall-through implícito">
+  Em C e Java, esquecer um `break` no final de um case faz a execução "cair"
+  para o próximo case — uma fonte notória de bugs. O Go inverte esse padrão:
+  cada case para automaticamente. O fall-through deve ser solicitado
+  explicitamente com a keyword `fallthrough`, abordada mais adiante neste
+  artigo.
+</Callout>
+
+## Switch com inicialização
+
+Assim como o `for`, o statement `switch` aceita uma cláusula de inicialização opcional, separada da expressão por um ponto e vírgula. A variável declarada na cláusula de init tem escopo em todo o bloco `switch`, incluindo todos os cases:
+
+```go
+switch os := runtime.GOOS; os {
+case "linux":
+    fmt.Println("Running on Linux")
+case "darwin":
+    fmt.Println("Running on macOS")
+default:
+    fmt.Printf("Running on %s\n", os)
+}
+
+```
+
+Aqui `os` é declarado e atribuído na cláusula de init e então usado como expressão do switch na mesma linha. Quando o bloco `switch` termina, `os` sai de escopo. Esse padrão mantém a variável bem contida — ela não vaza para a função circundante.
+
+## Cada case tem seu próprio escopo
+
+Ao contrário de muitas linguagens, cada `case` em Go introduz implicitamente seu próprio bloco de código. Isso significa que você pode declarar variáveis dentro de um case sem se preocupar com colisões com outros cases:
+
+```go
+switch status {
+case 200:
+    msg := "OK"
+    fmt.Println(msg)
+case 404:
+    msg := "Not Found" // no conflict with the msg above
+    fmt.Println(msg)
+}
+
+```
+
+Ambos os cases declaram `msg`, e o Go os trata como variáveis completamente independentes. Em linguagens sem escopo por case, isso exigiria chaves explícitas ou causaria um erro de redeclaração.
+
+## Correspondendo múltiplas condições em um único case
+
+Um único `case` pode listar múltiplos valores separados por vírgula. Se a expressão do switch corresponder a qualquer um deles, o case executa:
+
+```go
+switch day {
+case "Saturday", "Sunday":
+    fmt.Println("Weekend")
+case "Monday", "Tuesday", "Wednesday", "Thursday", "Friday":
+    fmt.Println("Weekday")
+}
+
+```
+
+Isso é mais legível do que duplicar o corpo do case ou encadear condições. Sempre que dois ou mais valores compartilham o mesmo comportamento, agrupe-os em um único case.
+
+## Switch sem expressão
+
+Go permite omitir a expressão do switch completamente. Quando isso é feito, o statement se comporta como `switch true` — cada case é avaliado como uma expressão booleana e o primeiro que for verdadeiro executa:
+
+```go
+score := 78
+
+switch {
+case score >= 90:
+    fmt.Println("A")
+case score >= 80:
+    fmt.Println("B")
+case score >= 70:
+    fmt.Println("C")
+default:
+    fmt.Println("F")
+}
+
+```
+
+Essa forma é um substituto limpo para uma longa cadeia `if`/`else if`, especialmente quando as condições envolvem intervalos ou expressões complexas em vez de verificações de igualdade.
+
+<Callout type="note" title="Switch sem expressão vs if/else">
+  As duas formas são equivalentes em comportamento, mas o `switch` torna a
+  intenção mais clara quando há três ou mais branches mutuamente exclusivos. Use
+  `if`/`else` para uma ou duas condições; recorra ao `switch` quando os branches
+  se multiplicam.
+</Callout>
+
+## A keyword fallthrough
+
+O padrão do Go — sem fall-through — é quase sempre o que você quer. Mas ocasionalmente é necessário que um case continue intencionalmente para o próximo. A keyword `fallthrough` faz exatamente isso:
+
+```go
+n := 5
+
+switch {
+case n > 0:
+    fmt.Println("positive")
+    fallthrough
+case n > -10:
+    fmt.Println("greater than -10")
+}
+
+```
+
+Saída:
+
+```
+positive
+greater than -10
+
+```
+
+Quando o primeiro case corresponde e `fallthrough` é alcançado, a execução transfere para o corpo do próximo case incondicionalmente — a condição do próximo case não é reavaliada. Esse é um detalhe importante: `fallthrough` é um salto cego para o próximo corpo, não uma segunda verificação de condição.
+
+<Callout type="warning" title="fallthrough ignora a avaliação da condição">
+  Quando `fallthrough` transfere o controle, a condição do próximo case não é
+  verificada. Se você precisa que ambas as condições sejam satisfeitas, use um
+  case com múltiplas condições ou lógica aninhada. Cadeias surpreendentes de
+  `fallthrough` são o equivalente Go do bug de fall-through do C — use com
+  parcimônia.
+</Callout>
+
+## Cases com múltiplas condições vs fallthrough
+
+Ambas as funcionalidades permitem que um único caminho de código trate múltiplos cenários, mas servem a propósitos diferentes e têm perfis de legibilidade distintos:
+
+|                          | Case com múltiplas condições                   | `fallthrough`                                        |
+| ------------------------ | ---------------------------------------------- | ---------------------------------------------------- |
+| Condições verificadas    | Todos os valores correspondidos explicitamente | Apenas o primeiro case correspondente                |
+| Condição do próximo case | Não aplicável                                  | Ignorada — o corpo executa incondicionalmente        |
+| Legibilidade             | Intenção clara, fácil de percorrer             | Menos óbvio, requer rastreamento mental              |
+| Ideal para               | Valores que compartilham o mesmo comportamento | Casos raros em que cascata é genuinamente necessária |
+
+Na prática, a grande maioria dos usos de `fallthrough` pode ser substituída por um case com múltiplas condições:
+
+```go
+// Prefer this:
+switch cmd {
+case "quit", "exit", "q":
+    os.Exit(0)
+}
+
+// Over this:
+switch cmd {
+case "quit":
+    fallthrough
+case "exit":
+    fallthrough
+case "q":
+    os.Exit(0)
+}
+
+```
+
+A versão com múltiplas condições declara a intenção diretamente. A cadeia com `fallthrough` força o leitor a percorrer três cases para entender que todos fazem a mesma coisa. Reserve `fallthrough` para a situação rara em que os cases genuinamente precisam encadear com corpos distintos.

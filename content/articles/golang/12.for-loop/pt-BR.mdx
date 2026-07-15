@@ -1,0 +1,215 @@
+---
+title: O loop for
+description: Go tem apenas um construto de loop — for — mas cobre todos os casos de uso. Aprenda as três formas do for, como range funciona em arrays, slices, strings, maps e channels, e quando usar cada forma.
+slug: laco-for
+publishedAt: '2026-04-09'
+keywords:
+  [
+    golang,
+    go for loop,
+    go while loop,
+    go range,
+    go loop infinito,
+    go for clause,
+    go for range,
+    go loop,
+  ]
+---
+
+## Um loop para todos os casos
+
+A maioria das linguagens de programação oferece vários construtos de loop: `for`, `while` e `do-while` cada um serve a um propósito ligeiramente diferente — iterar um número fixo de vezes, executar até que uma condição mude, ou executar pelo menos uma vez antes de verificar. Go fez uma simplificação deliberada: tem apenas a keyword `for`, e ela cobre todos esses casos de uso dependendo de como você a escreve.
+
+Há três formas:
+
+- **For com condição** — equivalente a um loop `while`
+- **For com for clause** — a forma clássica `init; condition; post`
+- **For com range clause** — iteração sobre coleções
+
+## For com condição
+
+Esta é a forma mais simples. O loop continua executando enquanto a condição for `true`, e para assim que ela se tornar `false`:
+
+```go
+n := 1
+for n < 100 {
+    n *= 2
+}
+fmt.Println(n) // 128
+
+```
+
+Este é o equivalente Go de um loop `while` em outras linguagens. Se você tem uma condição que quer verificar antes de cada iteração — sem nenhum init ou post statement — essa é a forma certa.
+
+### Loop infinito
+
+Se você omitir a condição completamente, ela assume `true` por padrão e o loop executa para sempre. Esta é a forma idiomática de escrever um loop infinito em Go:
+
+```go
+for {
+    // executa para sempre
+}
+
+```
+
+Loops infinitos são usados em servers, event loops e background workers que devem rodar até o programa encerrar ou um `break` explícito ser alcançado.
+
+## For com for clause
+
+Esta é a forma clássica estilo C com três componentes separados por ponto e vírgula:
+
+```go
+for i := 0; i < 5; i++ {
+    fmt.Println(i)
+}
+
+```
+
+As três partes são:
+
+| Parte          | Função                                                    | No exemplo |
+| -------------- | --------------------------------------------------------- | ---------- |
+| Init statement | Executa uma vez antes do loop começar                     | `i := 0`   |
+| Condition      | Verificada antes de cada iteração; loop para quando falsa | `i < 5`    |
+| Post statement | Executa após cada corpo de iteração                       | `i++`      |
+
+Qualquer uma das três partes pode ser omitida. Omitir a condição torna o loop infinito (igual a `for { }`). Omitir o init ou o post deixa apenas um placeholder de ponto e vírgula:
+
+```go
+i := 0
+for ; i < 5; i++ { // sem init
+    fmt.Println(i)
+}
+
+for i := 0; i < 5; { // sem post
+    fmt.Println(i)
+    i++
+}
+
+```
+
+<Callout type="note" title="Variáveis declaradas no init têm escopo no loop">
+  Uma variável declarada no init statement — como `i := 0` — existe apenas
+  durante a execução do loop. Ela não é acessível após o `}` de fechamento. Esta
+  é a mesma regra de escopo dos [if init
+  statements](/pt-BR/categorias/golang/artigos/condicionais).
+</Callout>
+
+## For com range clause
+
+A forma `range` itera sobre elementos de uma coleção. Funciona com arrays, slices, strings, maps e channels. O número de variáveis de iteração que ela fornece depende do que você está iterando.
+
+### Arrays e slices
+
+`range` em um array ou slice fornece o index e o valor em cada posição:
+
+```go
+nums := []int{10, 20, 30}
+for i, v := range nums {
+    fmt.Println(i, v)
+}
+// 0 10
+// 1 20
+// 2 30
+
+```
+
+Se você só precisa do index, omita a segunda variável. Se só precisa do valor, descarte o index com `_`:
+
+```go
+for i := range nums {
+    fmt.Println(i) // apenas index
+}
+
+for _, v := range nums {
+    fmt.Println(v) // apenas valor
+}
+
+```
+
+### Strings
+
+`range` em uma string itera sobre code points Unicode (runes), não bytes. A primeira variável é o byte offset onde o rune começa, e a segunda é o valor do rune em si:
+
+```go
+for i, r := range "Héllo" {
+    fmt.Printf("%d: %c\n", i, r)
+}
+// 0: H
+// 1: é   ← começa no byte 1, ocupa 2 bytes
+// 3: l
+// 4: l
+// 5: o
+
+```
+
+Esta é a forma idiomática de iterar sobre caracteres em uma string. Como abordado no [artigo sobre strings](/pt-BR/categorias/golang/artigos/strings), a indexação direta de bytes em caracteres multi-byte produz valores brutos de bytes, não os caracteres esperados.
+
+### Maps
+
+`range` em um map fornece a key e o value para cada entrada:
+
+```go
+ages := map[string]int{"Alice": 30, "Bob": 25}
+for name, age := range ages {
+    fmt.Println(name, age)
+}
+
+```
+
+<Callout type="warning" title="A ordem de iteração de maps é aleatória">
+  Go deliberadamente aleatoriza a ordem de iteração de maps a cada execução.
+  Você não pode depender que as entradas apareçam na ordem de inserção ou em
+  qualquer outra ordem previsível. Se precisar de saída ordenada, colete as keys
+  em um slice, ordene-o e itere o slice.
+</Callout>
+
+<Callout type="warning" title="Modificar um map durante a iteração">
+  Se você adicionar ou deletar keys em um map enquanto itera sobre ele, Go não
+  dá garantias sobre se as entradas novas ou deletadas serão observadas na
+  iteração atual. Keys recém-adicionadas podem ou não aparecer; keys deletadas
+  que ainda não foram visitadas podem ou não ser puladas. O comportamento é
+  intencionalmente indefinido — não dependa dele.
+</Callout>
+
+### Channels
+
+`range` em um channel recebe valores um de cada vez até que o channel seja fechado:
+
+```go
+ch := make(chan int)
+go func() {
+    ch <- 1
+    ch <- 2
+    ch <- 3
+    close(ch)
+}()
+
+for v := range ch {
+    fmt.Println(v)
+}
+// 1
+// 2
+// 3
+
+```
+
+Diferente de outras formas de range, iterar sobre um channel fornece apenas uma variável — o valor recebido. Não há index. O loop bloqueia aguardando o próximo valor e encerra de forma limpa quando o channel é fechado. Se o channel nunca for fechado, o loop executa para sempre.
+
+## break e continue
+
+Tanto `break` quanto `continue` funcionam da mesma forma que em outras linguagens. `break` sai do loop imediatamente. `continue` pula o restante da iteração atual e passa para a próxima:
+
+```go
+for i := 0; i < 10; i++ {
+    if i == 3 {
+        continue // pula o 3
+    }
+    if i == 7 {
+        break // para no 7
+    }
+    fmt.Println(i)
+}
+// 0 1 2 4 5 6
+
+```

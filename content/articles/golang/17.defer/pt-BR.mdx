@@ -1,0 +1,197 @@
+---
+title: Defer
+description: O statement defer agenda uma chamada de função para executar logo antes da função ao redor retornar. Aprenda como funciona, quando os argumentos são avaliados e como usá-lo para cleanup.
+slug: defer
+publishedAt: '2026-04-14'
+keywords:
+  [
+    golang,
+    go defer,
+    go defer statement,
+    go cleanup,
+    go defer lifo,
+    go defer return values,
+  ]
+---
+
+## O problema do cleanup
+
+Funções que adquirem recursos — abrem arquivos, travam mutexes, estabelecem conexões com banco de dados — precisam liberá-los ao terminar. A chamada de liberação deve sempre acontecer, independente de como a função sai: retorno normal, retorno antecipado por erro ou uma falha inesperada.
+
+Sem um mecanismo dedicado, garantir o cleanup é manual e propenso a erros. Cada `return` antecipado precisa da sua própria chamada de liberação correspondente, e adicionar um novo caminho de saída significa revisar todos os existentes.
+
+O statement `defer` do Go resolve isso diretamente.
+
+## O que defer faz
+
+Um statement `defer` agenda uma chamada de função para ser executada logo antes da função ao redor retornar. A chamada é registrada imediatamente quando a linha `defer` é alcançada, mas a execução em si é adiada:
+
+```go
+func main() {
+    fmt.Println("start")
+    defer fmt.Println("deferred")
+    fmt.Println("end")
+}
+
+```
+
+Saída:
+
+```
+start
+end
+deferred
+
+```
+
+A chamada adiada executa por último, depois que o restante de `main` terminou. À primeira vista parece simples — mas a regra de timing tem mais profundidade do que aparenta.
+
+## Quando uma função adiada executa
+
+Uma função adiada tem garantia de execução em três condições:
+
+1. **A função ao redor retorna** — um statement `return` em qualquer ponto da função dispara as chamadas adiadas antes de devolver o controle para quem chamou.
+2. **A execução alcança o final do corpo da função** — um return implícito na chave de fechamento.
+3. **A função entra em panic** — mesmo um panic não recuperado vai esvaziar a pilha de chamadas adiadas antes de se propagar.
+
+As três condições compartilham a mesma garantia: a função adiada executa antes que a função ao redor devolva o controle. Seja qual for a forma de saída — limpa, antecipada ou por falha — as chamadas adiadas não são puladas.
+
+## Argumentos são avaliados imediatamente
+
+Quando `defer` registra uma chamada, ele avalia os argumentos da função _naquele momento_, não quando a chamada adiada eventualmente executar:
+
+```go
+func main() {
+    x := 10
+    defer fmt.Println(x) // captura 10 agora
+    x = 20
+    fmt.Println(x)
+}
+
+```
+
+Saída:
+
+```
+20
+10
+
+```
+
+`fmt.Println(x)` é registrado com `x = 10`. Mesmo que `x` seja alterado para `20` depois, a chamada adiada ainda imprime `10`. O argumento foi congelado no momento em que o statement `defer` foi avaliado.
+
+<Callout type="warning" title="Variáveis capturadas vs argumentos avaliados">
+Argumentos são avaliados de forma antecipada, mas variáveis capturadas por uma closure não são. Se você usar uma closure em um `defer`, ela verá o valor da variável *no momento em que executar*, não quando foi registrada:
+
+```go
+x := 10
+defer func() { fmt.Println(x) }() // imprime 20, não 10
+x = 20
+
+```
+
+Escolha entre as duas formas deliberadamente — elas se comportam de maneira diferente.
+
+</Callout>
+
+## Múltiplos defers executam em ordem LIFO
+
+Quando uma função registra mais de uma chamada adiada, elas executam em ordem last-in, first-out — como uma pilha. O último `defer` registrado executa primeiro:
+
+```go
+func main() {
+    defer fmt.Println("first")
+    defer fmt.Println("second")
+    defer fmt.Println("third")
+}
+
+```
+
+Saída:
+
+```
+third
+second
+first
+
+```
+
+A ordem LIFO é intencional. Ela espelha a estrutura natural de aquisição de recursos: se você abre A e depois abre B, a ordem correta de cleanup é fechar B primeiro e depois A. Chamadas adiadas respeitam naturalmente esse aninhamento.
+
+## Defer e valores de retorno
+
+O timing exato de uma chamada adiada é preciso: ela executa _depois_ que o statement return define os parâmetros de resultado, mas _antes_ que a função retorne para quem a chamou. Para funções com named return values, isso significa que uma função adiada pode ler e modificar o valor que será de fato retornado:
+
+```go
+func double() (n int) {
+    defer func() {
+        n *= 2
+    }()
+    n = 5
+    return
+}
+
+fmt.Println(double()) // 10
+
+```
+
+O statement `return` define `n` como `5`. A função adiada então executa, multiplica `n` por `2`, deixando-o em `10`. Quem chamou recebe `10`, não `5`.
+
+Essa interação só se aplica a named return values. Com valores de retorno sem nome, a função adiada não tem como alcançar o valor de retorno:
+
+```go
+func double() int {
+    n := 5
+    defer func() {
+        n *= 2 // modifica o n local, mas o valor de retorno já é uma cópia
+    }()
+    return n // retorna uma cópia de n; o defer executa mas a cópia não é afetada
+}
+
+fmt.Println(double()) // 5
+
+```
+
+A distinção importa quando uma função adiada precisa ajustar o que será retornado — use named return values para tornar isso possível.
+
+## Limpando recursos
+
+O uso mais comum de `defer` é garantir que um recurso seja liberado quando a função que o abriu sair. O exemplo canônico é um arquivo:
+
+```go
+func processFile(path string) error {
+    f, err := os.Open(path)
+    if err != nil {
+        return err
+    }
+    defer f.Close()
+
+    // lê de f...
+    return nil
+}
+
+```
+
+`f.Close()` é registrado imediatamente após o arquivo ser aberto com sucesso. Não importa quantos statements `return` venham depois — um para cada possível erro, ou o retorno final de sucesso — `f.Close()` executa exatamente uma vez, logo antes de `processFile` devolver o controle.
+
+O mesmo padrão se aplica a qualquer recurso com um par de aquisição/liberação:
+
+```go
+mu.Lock()
+defer mu.Unlock()
+
+rows, err := db.Query(query)
+if err != nil {
+    return err
+}
+defer rows.Close()
+
+```
+
+Cada `defer` é colocado logo ao lado da aquisição que protege. O código se lê na ordem natural das operações, e o cleanup é garantido sem precisar repetir chamadas de liberação ao longo da função.
+
+## Defer e panics
+
+Um panic no Go desfaz a pilha de chamadas, executando as funções adiadas ao longo do caminho. Isso significa que `defer` é também o gancho para recuperação de um panic — uma função adiada pode chamar `recover()` para interceptar o panic e evitar que o programa encerre abruptamente.
+
+Panic e recovery serão abordados em seu próprio artigo. Por ora, basta saber que `defer` está envolvido: qualquer cleanup registrado com `defer` ainda executará mesmo quando uma função entrar em panic, o que o torna o lugar certo para tratar tanto saídas normais quanto falhas inesperadas.

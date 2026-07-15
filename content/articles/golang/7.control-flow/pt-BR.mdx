@@ -1,0 +1,130 @@
+---
+title: Condicionais
+description: Domine os statements condicionais em Go — if, else, else if e if com init statement. Aprenda como Go impõe condições booleanas estritas e como variáveis com escopo tornam o tratamento de erros mais limpo.
+slug: condicionais
+publishedAt: '2026-04-08'
+keywords:
+  [
+    golang,
+    condicionais go,
+    if else go,
+    if init statement go,
+    variáveis com escopo go,
+    condições booleanas go,
+    condicional go,
+    go idiomático,
+  ]
+---
+
+## O statement `if`
+
+Um statement `if` executa um bloco de código somente quando uma condição é verdadeira. A condição é uma expressão booleana — ela deve avaliar para `true` ou `false`.
+
+```go
+age := 20
+
+if age >= 18 {
+    fmt.Println("adult")
+}
+
+```
+
+Os parênteses em torno da condição são opcionais em muitas linguagens, mas ausentes por convenção em Go — o compilador os aceita, mas o `gofmt` os remove. As chaves, por outro lado, são sempre obrigatórias. Go não permite corpos de `if` em uma única linha sem chaves.
+
+<Callout type="note" title="Go exige um bool estrito">
+Diferente de C, JavaScript ou Python, Go não trata inteiros diferentes de zero, strings não vazias ou ponteiros não-nil como verdadeiros. A condição deve ser uma expressão que avalie exatamente para `bool`. Escrever `if n { ... }` onde `n` é um `int` é um compile error.
+</Callout>
+
+## O statement `if-else`
+
+Um bloco `else` executa quando a condição é falsa. Ele fornece um segundo caminho de execução — exatamente um dos dois blocos será executado:
+
+```go
+score := 72
+
+if score >= 60 {
+    fmt.Println("pass")
+} else {
+    fmt.Println("fail")
+}
+
+```
+
+A keyword `else` deve aparecer na mesma linha que a chave de fechamento do bloco `if`. Colocá-la na linha seguinte é um compile error porque a inserção automática de ponto e vírgula do Go coloca um `;` após o `}`, tornando o `else` inacessível:
+
+```go
+// compile error: unexpected else
+if score >= 60 {
+    fmt.Println("pass")
+}
+else {
+    fmt.Println("fail")
+}
+
+```
+
+## O statement `if-else if`
+
+Quando você precisa avaliar mais de duas condições, pode encadear cláusulas `else if`. Go as avalia de cima para baixo e executa o primeiro bloco cuja condição seja verdadeira. Se nenhuma condição corresponder e houver um `else`, esse bloco é executado:
+
+```go
+temp := 22
+
+if temp < 0 {
+    fmt.Println("freezing")
+} else if temp < 15 {
+    fmt.Println("cold")
+} else if temp < 25 {
+    fmt.Println("comfortable")
+} else {
+    fmt.Println("hot")
+}
+
+```
+
+Uma vez que uma condição corresponde, os demais branches são completamente ignorados — Go não cai nos blocos `else if` seguintes. O `else` final é opcional; sem ele, se nenhuma condição corresponder, a execução continua após toda a cadeia.
+
+<Callout type="note" title="Cadeias longas são um sinal">
+  Uma longa cadeia `if-else if` avaliando a mesma variável em diferentes valores
+  geralmente é melhor expressa como um statement `switch`. O `switch` é mais
+  fácil de ler, mais fácil de estender, e deixa clara a intenção — "escolher um
+  entre vários casos".
+</Callout>
+
+## If com init statement
+
+Go permite um statement de inicialização opcional antes da condição, separado por ponto e vírgula. A variável declarada no init statement tem escopo para todo o bloco `if-else` — ela existe apenas dentro daquele bloco e não é acessível após ele:
+
+```go
+if x := compute(); x > 0 {
+    fmt.Println("positive:", x)
+} else {
+    fmt.Println("non-positive:", x)
+}
+
+// x não é acessível aqui
+
+```
+
+Isso não é apenas uma conveniência sintática — é um mecanismo de escopo intencional. Ao declarar a variável dentro do `if`, você sinaliza que seu propósito está exclusivamente vinculado àquela verificação condicional. Ela não pode vazar para o escopo externo e afetar código não relacionado.
+
+O padrão é usado constantemente para tratamento de erros em Go. Funções que podem falhar retornam um valor e um error. O init statement captura ambos, e o corpo trata o caminho de falha:
+
+```go
+if err := doSomething(); err != nil {
+    fmt.Println("error:", err)
+    return
+}
+
+```
+
+Essa é a forma idiomática Go de tratar erros inline, sem declarar uma variável descartável no escopo externo apenas para verificá-la uma vez. A variável existe exatamente pelo tempo necessário — nada mais.
+
+<Callout
+  type="note"
+  title="Ambos os branches compartilham a variável com escopo"
+>
+  Uma variável declarada no init statement é visível em todos os branches — o
+  corpo do `if`, cada corpo de `else if` e o corpo do `else`. Por isso `x` é
+  acessível no bloco `else` no primeiro exemplo acima.
+</Callout>

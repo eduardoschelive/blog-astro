@@ -1,0 +1,197 @@
+---
+title: Panic and recover
+description: Learn when Go raises a panic, how it unwinds the call stack, and how recover lets packages catch panics and return meaningful errors instead of crashing.
+slug: panic-and-recover
+publishedAt: '2026-04-27'
+keywords:
+  - golang
+  - panic
+  - recover
+  - defer
+  - stack trace
+  - error handling
+---
+
+[Errors](/en-US/categories/golang/articles/errors) signal expected failures — conditions the caller should anticipate and handle. Panic is different. A panic signals that the program has entered a state it cannot recover from through normal means: an invariant has been violated, an impossible condition has been reached, or the runtime has detected something fundamentally wrong. Understanding when Go raises panics, how they propagate through the call stack, and what `recover` can and cannot do shapes how you write robust programs and design safe package boundaries.
+
+## What is a panic
+
+A panic is an abrupt halt in a goroutine's normal execution. The Go runtime raises panics automatically for a narrow set of violations: accessing a slice or array index out of bounds, dereferencing a nil pointer, dividing an integer by zero, or writing to a closed channel.
+
+```go
+s := []int{1, 2, 3}
+_ = s[5]
+
+```
+
+Running this produces a runtime panic:
+
+```bash
+panic: runtime error: index out of range [5] with length 3
+
+goroutine 1 [running]:
+main.main()
+        /tmp/main.go:6 +0x18
+exit status 2
+
+```
+
+The runtime prints the panic message, the goroutine that panicked, the exact file and line number, and exits with a non-zero status code.
+
+You can also raise a panic explicitly using the built-in `panic` function, which accepts a value of type `any`:
+
+```go
+panic("critical: configuration not found")
+panic(fmt.Errorf("unexpected state: %v", state))
+panic(42)
+
+```
+
+The argument can be anything — a string, an error, a struct, a number. When `panic` is called, the current function stops immediately. No code after the call to `panic` runs. The runtime begins unwinding the stack.
+
+## Panic and defer
+
+The key to understanding panic lies in its relationship with [defer](/en-US/categories/golang/articles/defer). As a panic unwinds the stack, it runs every deferred function in each stack frame before moving on to the next. Deferred functions execute in LIFO order within each frame — the same order they would run in a normal return.
+
+```go
+func a() {
+    defer fmt.Println("defer in a")
+    b()
+}
+
+func b() {
+    defer fmt.Println("defer in b")
+    panic("something went wrong")
+}
+
+func main() {
+    defer fmt.Println("defer in main")
+    a()
+}
+
+```
+
+```bash
+defer in b
+defer in a
+defer in main
+panic: something went wrong
+
+goroutine 1 [running]:
+main.b(...)
+        /tmp/main.go:10 +0x58
+main.a(...)
+        /tmp/main.go:5 +0x30
+main.main()
+        /tmp/main.go:15 +0x40
+exit status 2
+
+```
+
+After `b` panics, its deferred function runs first. The panic then moves up to `a`, which runs its deferred function. Finally it reaches `main`, runs its deferred function, and then prints the panic message and terminates.
+
+This guarantee — that deferred functions always run, even during a panic — is what makes `defer` essential for resource cleanup. File handles, database connections, mutexes, and any other resources guarded with `defer` are released even if the program panics.
+
+## The recover function
+
+`recover` is a built-in function that stops a panic from propagating and returns the value that was passed to `panic`. Its signature is:
+
+```go
+func recover() any
+
+```
+
+If called when no panic is occurring, `recover` returns nil. There is one strict requirement: `recover` must be called **directly inside a deferred function**. Calling it in a helper that is itself called from a deferred function, or anywhere outside of `defer`, has no effect.
+
+The canonical pattern wraps `recover` in an anonymous deferred function:
+
+```go
+func safeRun(fn func()) (err error) {
+    defer func() {
+        if r := recover(); r != nil {
+            err = fmt.Errorf("panic: %v", r)
+        }
+    }()
+    fn()
+    return nil
+}
+
+```
+
+When `fn` panics, the deferred function runs, `recover()` captures the panic value, and `safeRun` returns normally with an error set. When `fn` does not panic, `recover()` returns nil and the deferred function does nothing.
+
+<Callout type="warning" title="recover must be in a directly deferred function">
+Calling `recover` inside a helper that is called from a deferred function does not work — it returns nil and the panic continues:
+
+```go
+defer func() {
+    cleanup() // recover() inside cleanup has no effect
+}()
+```
+
+`recover` only intercepts a panic when it is called directly in the body of the deferred function itself.
+
+</Callout>
+
+## What happens after recover
+
+After `recover` catches a panic, the panicking goroutine does not resume the function that panicked. The deferred function containing `recover` completes normally, and control returns to the caller of the panicking function. Everything after the panic in the original function is gone — it will never execute.
+
+```go
+func riskyOp() {
+    fmt.Println("before panic")
+    panic("something went wrong")
+    fmt.Println("this never runs")
+}
+
+func main() {
+    defer func() {
+        if r := recover(); r != nil {
+            fmt.Println("recovered:", r)
+        }
+    }()
+    riskyOp()
+    fmt.Println("this also never runs")
+}
+
+```
+
+```bash
+before panic
+recovered: something went wrong
+
+```
+
+`riskyOp` stops at the panic. `main` never reaches its final `Println`. Recovery moves forward — back to the caller — not backward to continue where the panic occurred.
+
+## When to use recover
+
+The intended purpose of `recover` is narrow: preventing a panic inside one subsystem from crashing the entire process. The clearest use case is a package that executes code it does not fully control — a plugin system, a template engine, a request handler — where a panic in that code should become a returned error rather than bringing down the server.
+
+```go
+func Execute(fn func()) (err error) {
+    defer func() {
+        if r := recover(); r != nil {
+            err = fmt.Errorf("execution failed: %v", r)
+        }
+    }()
+    fn()
+    return nil
+}
+
+```
+
+Callers of `Execute` receive an error instead of a crash. The package acts as a safety boundary between untrusted or unpredictable code and the rest of the program.
+
+<Callout type="note" title="The standard library uses this pattern">
+  `encoding/json` and `text/template` use `recover` internally. They panic
+  inside deeply nested parsing code and recover at the top-level public API,
+  converting the panic into a returned `error`. Users of those packages see a
+  clean error return; the panic is completely hidden.
+</Callout>
+
+Two limits on this approach are worth understanding clearly.
+
+**Recovery does not fix the underlying problem.** If the condition that caused the panic still exists — the same nil pointer, the same out-of-bounds index — and the same code runs again, it will panic again. `recover` is for graceful exit, not for retrying the failed operation.
+
+**Panic and recover are not exception handling.** Using `panic` to signal expected failures and `recover` to handle them — the way try-catch is used in other languages — produces code that is harder to read, harder to compose, and violates the expectations of anyone reading idiomatic Go. The rule is straightforward: return `error` for expected failures, let panics propagate for truly unrecoverable states, and use `recover` only at package boundaries to contain damage and translate it into an error the caller can act on.

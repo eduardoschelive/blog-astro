@@ -1,0 +1,287 @@
+---
+title: Stacks
+description: Learn how stacks enforce LIFO order to manage data. Explore push, pop, and peek operations, array vs linked list implementations, and why stacks underpin function calls and expression parsing.
+slug: stack
+publishedAt: '2026-03-04'
+keywords:
+  [
+    stack,
+    LIFO,
+    push,
+    pop,
+    peek,
+    data structures,
+    call stack,
+    stack overflow,
+    stack underflow,
+    array implementation,
+    linked list implementation,
+    C programming,
+  ]
+---
+
+## What is a Stack
+
+A **stack** is a collection that enforces a single rule: the last element added is the first one removed. This is called **LIFO** — Last In, First Out.
+
+Think of a stack of plates. You place new plates on top. You take plates from the top. To reach the plate at the bottom, you must first remove every plate above it.
+
+<Example title="The plates analogy">
+
+Imagine stacking plates after washing them. Each new plate goes on top. When you need a plate, you grab the one on top. You never slide a plate out from the middle — you always work from the top down.
+
+A stack works exactly like this. The most recently added element is always the first one available.
+
+</Example>
+
+Unlike arrays and linked lists, a stack doesn't give you access to any arbitrary element. It only exposes one end — the top — and you interact with it through exactly three operations.
+
+This distinction matters: a stack is an **abstract data type** (ADT), not a concrete data structure. It defines _what_ operations are allowed and what rules they follow — but says nothing about _how_ the data is stored in memory. Arrays and linked lists are concrete data structures: they describe a specific memory layout. A stack is a contract. You can honor that contract using an array, a linked list, or anything else that supports push and pop with LIFO semantics.
+
+## The three operations
+
+A stack's entire interface is three operations:
+
+- **push** — add an element to the top
+- **pop** — remove the element from the top
+- **peek** — read the top element without removing it
+
+That's it. No indexing, no searching, no middle insertion. The constraint is the feature.
+
+### push: adding to the top
+
+`push` places a new element on top of the stack. Every push increases the stack's size by one.
+
+<StackVisualization
+  title="push(99) on [3, 8, 17, 42]:"
+  items={[3, 8, 17, 42]}
+  incoming={99}
+>
+  99 lands on top — 42 is no longer accessible until 99 is removed
+</StackVisualization>
+
+This is <Tooltip title="Constant time" content="O(1) — adding to the top takes the same time regardless of stack size">O(1)</Tooltip>. You're always adding to the same place.
+
+### pop: removing from the top
+
+`pop` removes the top element and returns it. The element below it becomes the new top.
+
+<StackVisualization
+  title="pop() from [3, 8, 17, 42, 99]:"
+  items={[3, 8, 17, 42, 99]}
+  outgoing
+>
+  99 is removed — 42 is now the top
+</StackVisualization>
+
+Also <Tooltip title="Constant time" content="O(1) — removing from the top takes the same time regardless of stack size">O(1)</Tooltip>. You're always removing from the same place.
+
+### peek: looking without touching
+
+`peek` (sometimes called `top`) returns the top element without removing it. Use it when you need to check what's on top before deciding whether to pop.
+
+```c
+// After push(42), push(17), push(8):
+// Stack: [42, 17, 8]  (8 is on top)
+
+peek() → returns 8
+// Stack is still: [42, 17, 8]
+```
+
+`peek` is also <Tooltip title="Constant time" content="O(1) — reading the top element is a direct access">O(1)</Tooltip>.
+
+## Array-based implementation
+
+The simplest way to implement a stack is with a fixed-size array and an index that tracks the top.
+
+```c
+#define MAX 100
+
+struct Stack {
+    int data[MAX];
+    int top;
+};
+
+void stack_init(struct Stack *s) {
+    s->top = -1;  // -1 means empty
+}
+
+int stack_is_empty(struct Stack *s) {
+    return s->top == -1;
+}
+
+int stack_is_full(struct Stack *s) {
+    return s->top == MAX - 1;
+}
+```
+
+The `top` index starts at -1. Each `push` increments it before writing; each `pop` reads then decrements it.
+
+```c
+void push(struct Stack *s, int value) {
+    if (stack_is_full(s)) return;  // stack overflow
+    s->data[++s->top] = value;
+}
+
+int pop(struct Stack *s) {
+    if (stack_is_empty(s)) return -1;  // stack underflow
+    return s->data[s->top--];
+}
+
+int peek(struct Stack *s) {
+    if (stack_is_empty(s)) return -1;
+    return s->data[s->top];
+}
+```
+
+<Callout type="warning">
+  Two failure modes to handle: **stack overflow** — pushing onto a full stack —
+  and **stack underflow** — popping from an empty stack. Both are silent bugs if
+  not checked explicitly. In C, array out-of-bounds writes corrupt adjacent
+  memory without raising an error.
+</Callout>
+
+The array implementation is cache-friendly and has no allocation overhead. The tradeoff is the fixed upper bound: you must know the maximum stack size in advance.
+
+## Linked-list-based implementation
+
+A linked list removes the fixed-size constraint. The **head** of the list becomes the top of the stack — push and pop both operate at the head, which is O(1) in a linked list.
+
+```c
+struct Node {
+    int value;
+    struct Node *next;
+};
+
+struct Stack {
+    struct Node *top;
+};
+
+void stack_init(struct Stack *s) {
+    s->top = NULL;
+}
+```
+
+```c
+void push(struct Stack *s, int value) {
+    struct Node *node = malloc(sizeof(struct Node));
+    node->value = value;
+    node->next = s->top;
+    s->top = node;
+}
+
+int pop(struct Stack *s) {
+    if (s->top == NULL) return -1;
+    struct Node *temp = s->top;
+    int value = temp->value;
+    s->top = s->top->next;
+    free(temp);
+    return value;
+}
+
+int peek(struct Stack *s) {
+    if (s->top == NULL) return -1;
+    return s->top->value;
+}
+```
+
+The linked-list stack grows without a predefined limit. Each push allocates one node; each pop frees it.
+
+<Callout type="info">
+  This is the same pattern described in the [Linked Lists
+  article](/categories/data-structures/articles/linked-lists): insert and delete
+  at the head are O(1). A stack is just a linked list with a restricted
+  interface — only the head is ever touched.
+</Callout>
+
+**Choosing between implementations:**
+
+|               | Array-based             | Linked-list-based           |
+| ------------- | ----------------------- | --------------------------- |
+| Max size      | Fixed at creation       | Unlimited                   |
+| Memory        | Compact, cache-friendly | Scattered, pointer overhead |
+| Overflow risk | Yes (bounded)           | Only if memory is exhausted |
+| Allocation    | None (pre-allocated)    | One malloc per push         |
+
+For small, bounded stacks — a function call stack, an expression evaluator — the array version is simpler and faster. For unbounded stacks where the maximum depth is unknown, use the linked list.
+
+## Common operations and their costs
+
+| Operation          | Time | Why                                    |
+| ------------------ | ---- | -------------------------------------- |
+| push               | O(1) | Always adds to the top                 |
+| pop                | O(1) | Always removes from the top            |
+| peek               | O(1) | Direct read of the top element         |
+| Search by value    | O(n) | Must pop or scan every element         |
+| Access by position | O(n) | No index — must pop down to that level |
+
+All three core operations are O(1). The constraint that makes a stack limited — only the top is accessible — is exactly what makes it fast.
+
+## Stacks in the real world
+
+### The function call stack
+
+Every time your program calls a function, the runtime pushes a **stack frame** onto the call stack. That frame holds the function's local variables, its parameters, and the return address — where to continue when the function finishes.
+
+```c
+void c() { /* ... */ }
+void b() { c(); }
+void a() { b(); }
+
+int main() {
+    a();
+    // call stack at deepest point:
+    // [ main | a | b | c ]  ← c is on top
+}
+```
+
+When `c` returns, its frame is popped. `b` resumes. When `b` returns, its frame is popped. `a` resumes. LIFO perfectly matches how function calls nest and return.
+
+<Callout type="info">
+  "Stack overflow" — the error, not just the concept — happens when the call
+  stack grows past its allocated limit. Deep or infinite recursion keeps pushing
+  frames without popping them, eventually exhausting the stack's memory. The
+  name of the error comes directly from the data structure.
+</Callout>
+
+### Undo and redo
+
+Every text editor's undo history is a stack. Each action pushes a state; undo pops the most recent one. A second stack holds undone actions for redo — popping from the undo stack pushes onto the redo stack.
+
+### Bracket matching
+
+To verify that brackets are balanced — `{[()]}` is valid, `{[(])}` is not — you push every opening bracket and pop when you see a closing one. If the popped bracket matches the closing one, continue. If not, the expression is invalid. If the stack isn't empty at the end, brackets are unclosed.
+
+### Depth-first search
+
+Graph traversal using depth-first search (DFS) relies on a stack — either an explicit one or the implicit call stack through recursion. When you reach a node, push its unvisited neighbors. Pop the next node to visit, repeat. The LIFO order ensures you go deep before going wide.
+
+### Browser back button
+
+A browser's back button is a stack of visited URLs. Navigating to a page pushes the current URL. Clicking back pops the most recent URL. The forward button is a second stack, just like undo/redo.
+
+## When Stacks fall short
+
+Stacks are powerful precisely because of what they refuse to do.
+
+**No random access.** You can't reach the 3rd element without popping the 2nd and 1st first. If you need to inspect or modify elements at arbitrary positions, a stack is the wrong structure.
+
+**Only one accessible end.** Stacks only expose the top. If your problem requires accessing both the front and the back — like a task queue that can be dequeued from either end — use a **deque** (double-ended queue) instead.
+
+**Fixed capacity (array-based).** If the maximum depth isn't known ahead of time, an array-based stack needs either a generous overestimate or a resizing strategy. The linked-list variant avoids this, but trades cache efficiency for flexibility.
+
+**Poor for search.** Finding a specific value requires popping everything above it, which destroys the original stack order. Use a different structure when search is a primary operation.
+
+## Summary
+
+Stacks are the simplest meaningful constraint you can put on a collection:
+
+- **LIFO discipline** — the last element in is always the first one out
+- **O(1) push, pop, and peek** — all three core operations take constant time
+- **Two implementation paths** — array-based (bounded, cache-friendly) or linked-list-based (unbounded, pointer overhead)
+- **The call stack** — the most important concrete stack you interact with every time a program runs
+- **Constraint is power** — by limiting access to one end, stacks make certain problems trivially simple
+
+The key insight is that restriction can be a feature. An unconstrained array lets you access anything — but that freedom forces every caller to manage indices, track order, and reason about arbitrary positions. A stack takes that complexity away. The only valid question is: what's on top?
+
+Stacks also connect directly to recursion. Every recursive function implicitly uses the call stack. Understanding stacks is understanding how recursive programs actually execute.

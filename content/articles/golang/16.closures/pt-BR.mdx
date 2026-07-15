@@ -1,0 +1,207 @@
+---
+title: Closures e funções anônimas
+description: Closures são funções que capturam variáveis do escopo que as envolve. Aprenda como funcionam em Go, por que retêm estado e onde são mais úteis.
+slug: closures
+publishedAt: '2026-04-14'
+keywords:
+  [
+    golang,
+    go closures,
+    go anonymous functions,
+    go function literals,
+    go higher order functions,
+    go callbacks,
+    go memoization,
+  ]
+---
+
+## Funções que lembram
+
+O [artigo anterior](/pt-BR/categorias/golang/artigos/funcoes) apresentou function literals — funções anônimas atribuídas a variáveis ou passadas como argumentos. Closures levam essa ideia um passo adiante: uma função que não apenas captura comportamento, mas também captura o _estado_ no qual foi criada.
+
+Entender closures desbloqueia um padrão que aparece por todo o Go idiomático: funções que carregam sua própria memória privada, independente de quem as chama.
+
+## Funções anônimas
+
+Uma declaração de função nomeada vincula um nome no nível do package e é visível em qualquer lugar do package. Às vezes você precisa de um pequeno trecho de lógica que só é relevante em um único lugar — não há razão para dar-lhe um nome permanente. Uma função anônima (também chamada de function literal ou lambda) é declarada inline, sem nome:
+
+```go
+func() {
+    fmt.Println("no name needed")
+}()
+
+```
+
+O `()` ao final chama a função imediatamente após defini-la. Isso é chamado de immediately invoked function expression — útil para executar lógica de setup em um escopo restrito.
+
+Com mais frequência, funções anônimas são atribuídas a uma variável:
+
+```go
+double := func(n int) int {
+    return n * 2
+}
+
+fmt.Println(double(5)) // 10
+
+```
+
+`double` armazena um valor de função. Ele pode ser chamado, passado para outras funções ou armazenado em uma estrutura de dados — como qualquer outro valor.
+
+Funções anônimas também são a escolha natural para callbacks: comportamento curto e específico ao contexto, passado para uma função que o chama mais tarde. A standard library usa esse padrão amplamente:
+
+```go
+numbers := []int{5, 2, 8, 1, 9, 3}
+
+sort.Slice(numbers, func(i, j int) bool {
+    return numbers[i] < numbers[j]
+})
+
+fmt.Println(numbers) // [1 2 3 5 8 9]
+
+```
+
+`sort.Slice` recebe a lógica de comparação como argumento de função. Não há razão para definir essa comparação em outro lugar — ela pertence aqui, no ponto de chamada.
+
+## O que faz uma closure
+
+Uma função anônima se torna uma closure no momento em que referencia uma variável do escopo que a envolve. A função não recebe essa variável como parâmetro — ela _fecha sobre_ ela, capturando uma referência à própria variável:
+
+```go
+func counter() func() int {
+    count := 0
+    return func() int {
+        count++
+        return count
+    }
+}
+
+```
+
+`counter` declara uma variável local `count` e retorna uma função anônima. Essa função retornada referencia `count` — uma variável que vive no escopo de `counter`, não no seu próprio.
+
+```go
+increment := counter()
+
+fmt.Println(increment()) // 1
+fmt.Println(increment()) // 2
+fmt.Println(increment()) // 3
+
+```
+
+Cada chamada a `increment` lê e modifica `count`. A variável persiste entre as chamadas. Mesmo que `counter` já tenha retornado há muito tempo e seu stack frame não exista mais, `count` ainda está viva — a closure a mantém viva.
+
+Essa é a propriedade definidora de uma closure: **ela retém acesso às variáveis sobre as quais fechou, mesmo depois que o escopo que as contém terminou de executar**.
+
+<Callout type="note" title="Closures capturam variáveis, não valores">
+  Uma closure armazena uma referência à variável, não uma cópia do seu valor no
+  momento em que a closure foi criada. Se a variável mudar após a criação da
+  closure, a closure verá o valor atualizado. Essa distinção importa quando você
+  espera que a variável capturada permaneça fixa — se precisar de um snapshot,
+  copie-a para uma nova variável antes.
+</Callout>
+
+## Cada closure tem seu próprio estado
+
+Chamar `counter` uma segunda vez não compartilha o mesmo `count`. Cada chamada cria uma nova execução de `counter`, uma nova variável `count` e uma nova closure que fecha sobre essa nova variável:
+
+```go
+a := counter()
+b := counter()
+
+fmt.Println(a()) // 1
+fmt.Println(a()) // 2
+fmt.Println(b()) // 1 — b tem seu próprio count, começando do zero
+fmt.Println(a()) // 3 — a continua de onde parou
+
+```
+
+`a` e `b` são completamente independentes. Cada uma é uma função pareada com seu próprio estado privado. É nesse sentido que uma closure pode ser entendida como uma _função com estado associado_ — o estado não é global, não é passado como argumento, mas pertence à própria closure.
+
+## Closures com múltiplas operações
+
+Uma closure pode expor mais de uma operação sobre o mesmo estado capturado. A forma mais simples é retornar múltiplas funções do mesmo escopo externo — todas compartilham a mesma variável:
+
+```go
+func newStack() (func(int), func() int) {
+    items := []int{}
+
+    push := func(n int) {
+        items = append(items, n)
+    }
+
+    pop := func() int {
+        if len(items) == 0 {
+            return -1
+        }
+        top := items[len(items)-1]
+        items = items[:len(items)-1]
+        return top
+    }
+
+    return push, pop
+}
+
+```
+
+Tanto `push` quanto `pop` fecham sobre o mesmo slice `items`. Qualquer operação modifica o estado compartilhado, e a outra vê a mudança imediatamente:
+
+```go
+push, pop := newStack()
+
+push(10)
+push(20)
+push(30)
+
+fmt.Println(pop()) // 30
+fmt.Println(pop()) // 20
+
+```
+
+Esse padrão — agrupar operações relacionadas sobre um estado privado compartilhado — é uma alternativa leve a um struct com methods quando os dados não precisam ser expostos ou nomeados.
+
+## Memoização
+
+Memoização é uma técnica em que uma função armazena em cache seus resultados para que chamadas repetidas com o mesmo argumento pulem o cálculo inteiramente. Uma closure é a implementação natural: o cache vive no escopo fechado, invisível para quem chama, persistindo entre as chamadas:
+
+```go
+func memoize(fn func(int) int) func(int) int {
+    cache := map[int]int{}
+    return func(n int) int {
+        if result, ok := cache[n]; ok {
+            return result
+        }
+        result := fn(n)
+        cache[n] = result
+        return result
+    }
+}
+
+```
+
+`memoize` envolve qualquer `func(int) int` e retorna uma nova função que armazena os resultados em cache de forma transparente. O map `cache` é privado — quem chama não pode inspecioná-lo nem modificá-lo:
+
+```go
+slowSquare := func(n int) int {
+    // imagine que isso é custoso
+    return n * n
+}
+
+square := memoize(slowSquare)
+
+fmt.Println(square(4))  // calculado: 16
+fmt.Println(square(4))  // do cache: 16
+fmt.Println(square(7))  // calculado: 49
+
+```
+
+O mesmo wrapper `memoize` funciona para qualquer `func(int) int` — a lógica do cache é escrita uma vez e o comportamento é injetado. Isso só é possível porque funções são valores de primeira classe e closures podem carregar estado privado.
+
+## Quando usar closures
+
+Closures aparecem naturalmente em algumas situações recorrentes:
+
+- **Callbacks** — passar comportamento curto e específico ao contexto para uma função que o chama mais tarde (`sort.Slice`, `http.HandleFunc`, etc.)
+- **Factories** — funções que criam e retornam funções configuradas (`multiplier`, `memoize`, `counter`)
+- **Estado encapsulado** — quando você precisa de um helper com estado, mas um struct completo parece excessivo
+
+Elas não são um substituto para structs e methods. Quando o estado é complexo, precisa de múltiplos fields ou deve ser passado pelo nome, um struct é mais claro. Use closures quando o estado é simples e o comportamento é o ponto central.

@@ -1,0 +1,342 @@
+---
+title: Deadlocks, livelocks e starvation
+description: Aprenda a identificar e prevenir os três riscos clássicos de concorrência no Go — deadlocks, livelocks e starvation — com exemplos práticos e soluções.
+slug: deadlocks-livelocks-starvation
+publishedAt: '2026-05-05'
+keywords:
+  - golang
+  - deadlock
+  - livelock
+  - starvation
+  - concorrência
+  - sync.Mutex
+  - condições de Coffman
+---
+
+O [artigo anterior](/pt-BR/categorias/golang/artigos/concorrencia) apresentou race conditions, atomicidade e critical sections. A resposta natural a uma race condition é proteger critical sections com um lock: apenas uma goroutine pode entrar por vez. Mas locks em si introduzem uma nova família de problemas. Uma estratégia de locking errada faz com que seu programa congele (deadlock), gire indefinidamente (livelock) ou prive silenciosamente uma goroutine de qualquer progresso (starvation).
+
+<Callout type="note" title="sync.Mutex">
+  Os exemplos neste artigo usam `sync.Mutex` para proteger critical sections. Um
+  mutex (mutual exclusion lock) tem duas operações: `Lock()` o adquire —
+  bloqueando até estar disponível — e `Unlock()` o libera. Apenas uma goroutine
+  pode segurar um mutex por vez. Vamos cobrir mutexes em profundidade em um
+  artigo futuro; por enquanto, trate-os como travas de porta em critical
+  sections.
+</Callout>
+
+## Deadlocks
+
+Um **deadlock** ocorre quando duas ou mais goroutines estão esperando por um recurso segurado pela outra, e nenhuma delas pode prosseguir. O programa não crasha nem retorna um erro — simplesmente para de fazer progresso.
+
+O cenário clássico envolve dois locks e duas goroutines adquirindo-os em ordem inversa:
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+	"time"
+)
+
+func main() {
+	var muA, muB sync.Mutex
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		muA.Lock()
+		fmt.Println("G1: acquired A, waiting for B...")
+		time.Sleep(10 * time.Millisecond) // garante que ambas chegem a este ponto
+		muB.Lock()                         // bloqueia aqui — G2 segura B
+		fmt.Println("G1: acquired B")      // nunca impresso
+		muB.Unlock()
+		muA.Unlock()
+	}()
+
+	go func() {
+		defer wg.Done()
+		muB.Lock()
+		fmt.Println("G2: acquired B, waiting for A...")
+		time.Sleep(10 * time.Millisecond)
+		muA.Lock()                         // bloqueia aqui — G1 segura A — deadlock
+		fmt.Println("G2: acquired A")      // nunca impresso
+		muA.Unlock()
+		muB.Unlock()
+	}()
+
+	wg.Wait() // main também bloqueia — todas as goroutines estão dormindo
+}
+
+```
+
+O runtime do Go detecta quando todas as goroutines do programa estão bloqueadas simultaneamente e entra em panic:
+
+```
+G1: acquired A, waiting for B...
+G2: acquired B, waiting for A...
+fatal error: all goroutines are asleep - deadlock!
+
+```
+
+<Callout type="note" title="Deadlocks parciais">
+  O runtime entra em panic apenas quando *todas* as goroutines estão bloqueadas.
+  Se alguma goroutine continua ativa, um subconjunto em deadlock passa
+  despercebido e o programa parece rodar normalmente enquanto essas goroutines
+  esperam para sempre. O flag `go run -race` não detecta deadlocks; um timeout
+  ou inspeção manual é necessário.
+</Callout>
+
+## As condições de Coffman
+
+E. G. Coffman Jr. identificou quatro condições que devem estar presentes simultaneamente para que um deadlock ocorra. Analisando o exemplo acima, todas as quatro são satisfeitas:
+
+**1. Mutual exclusion** — Pelo menos um recurso pode ser segurado por apenas um processo por vez. `sync.Mutex` é a definição de mutual exclusion: esse é seu único propósito.
+
+**2. Hold and wait** — Um processo segura pelo menos um recurso enquanto espera por outro. G1 segura `muA` enquanto espera por `muB`. G2 segura `muB` enquanto espera por `muA`.
+
+**3. No preemption** — Um recurso só pode ser liberado voluntariamente pelo processo que o segura. O runtime do Go não pode forçosamente tomar `muA` de G1 e entregar para G2.
+
+**4. Circular wait** — Existe um ciclo de processos, cada um esperando por um recurso segurado pelo próximo. G1 espera por `muB` (segurado por G2) → G2 espera por `muA` (segurado por G1) → ciclo.
+
+<Callout type="note" title="Necessárias mas não suficientes">
+  As condições de Coffman são *necessárias*: remova qualquer uma delas e um
+  deadlock não pode ocorrer. Mas a presença delas não garante que um ocorrerá —
+  apenas significa que é possível. A análise original de Coffman também assumia
+  instâncias únicas de cada recurso; sistemas com múltiplas instâncias exigem
+  análise diferente, como grafos de alocação de recursos.
+</Callout>
+
+## Prevenindo deadlocks
+
+A estratégia mais prática é eliminar pelo menos uma condição de Coffman. Duas abordagens cobrem os casos mais comuns.
+
+### Ordenação consistente de locks
+
+Circular wait exige que goroutines adquiram locks em ordens diferentes. Se toda goroutine sempre adquire `muA` antes de `muB`, o ciclo é impossível: nenhuma goroutine pode segurar `muB` enquanto espera por `muA`.
+
+```go
+// Ambas as goroutines adquirem na mesma ordem: A → B
+go func() {
+	muA.Lock()
+	muB.Lock()
+	// trabalho com ambos os recursos
+	muB.Unlock()
+	muA.Unlock()
+}()
+
+go func() {
+	muA.Lock() // mesma ordem — circular wait é impossível
+	muB.Lock()
+	// trabalho com ambos os recursos
+	muB.Unlock()
+	muA.Unlock()
+}()
+
+```
+
+Ordenação consistente de locks é a estratégia mais simples e robusta. Em codebases grandes, aplique-a com documentação, code review ou ferramentas de análise estática.
+
+### Eliminando hold-and-wait com TryLock
+
+Desde o Go 1.18, `sync.Mutex` oferece um método `TryLock()` que tenta adquirir o lock sem bloquear. Se falhar, a goroutine pode liberar tudo que já segura e tentar novamente mais tarde — quebrando a condição de hold-and-wait.
+
+```go
+go func() {
+	muA.Lock()
+	if !muB.TryLock() {
+		muA.Unlock() // libera o que segura em vez de esperar indefinidamente
+		// tenta novamente ou retorna um erro
+		return
+	}
+	// trabalho com ambos os recursos
+	muB.Unlock()
+	muA.Unlock()
+}()
+
+```
+
+<Callout type="warning" title="TryLock pode produzir livelocks">
+  Se ambas as goroutines continuam adquirindo seu primeiro lock, falhando no
+  segundo, liberando e tentando novamente com o mesmo timing fixo, elas podem
+  cair na próxima classe de problema: livelocks.
+</Callout>
+
+## Livelocks
+
+Um **livelock** se parece superficialmente com um deadlock — nenhum progresso é feito — mas com uma diferença crucial: as goroutines não estão bloqueadas. Elas estão ativamente rodando, continuamente mudando de estado, mas nunca completando seu trabalho.
+
+A analogia clássica é duas pessoas em um corredor estreito caminhando uma em direção à outra. Cada uma se desvia para deixar a outra passar. Cada uma vai para o mesmo lado ao mesmo tempo. Elas se espelham indefinidamente: ambas se movendo, nenhuma avançando.
+
+No código, isso surge quando goroutines usam `TryLock` com um delay fixo de retry:
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+	"time"
+)
+
+func work(id string, first, second *sync.Mutex, wg *sync.WaitGroup) {
+	defer wg.Done()
+	for attempt := 0; attempt < 10; attempt++ {
+		first.Lock()
+		if second.TryLock() {
+			fmt.Printf("%s: acquired both locks, completing work\n", id)
+			second.Unlock()
+			first.Unlock()
+			return
+		}
+		// recua educadamente — mas ambas as goroutines esperam o mesmo tempo fixo
+		first.Unlock()
+		time.Sleep(10 * time.Millisecond)
+	}
+	fmt.Printf("%s: gave up after too many retries\n", id)
+}
+
+func main() {
+	var muA, muB sync.Mutex
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go work("G1", &muA, &muB, &wg)
+	go work("G2", &muB, &muA, &wg)
+	wg.Wait()
+}
+
+```
+
+Ambas as goroutines iniciam quase ao mesmo tempo, adquirem seu primeiro lock simultaneamente, falham no segundo, liberam e dormem por exatamente `10ms`. Elas acordam em sincronia e repetem a mesma sequência. Nenhuma progride, mas ambas estão ocupadas executando código.
+
+Ao contrário de deadlocks, o runtime do Go não detecta livelocks. O programa roda até o limite de tentativas (ou indefinidamente, se não houver limite), consumindo CPU sem produzir resultados. Isso torna livelocks mais difíceis de diagnosticar do que deadlocks.
+
+## Prevenindo livelocks
+
+A solução é quebrar a sincronização entre as goroutines. Quando ambas tentam novamente após o mesmo delay exato, elas continuam colidindo. Introduzir **aleatoriedade** (jitter) no delay de retry descorrelaciona o timing delas — eventualmente uma goroutine tenta enquanto a outra ainda está dormindo, permitindo que adquira ambos os locks.
+
+```go
+import (
+	"math/rand"
+	"time"
+)
+
+func jitteredBackoff(attempt int) time.Duration {
+	base := time.Duration(1<<attempt) * time.Millisecond // exponencial: 1ms, 2ms, 4ms, 8ms...
+	jitter := time.Duration(rand.Intn(10)) * time.Millisecond
+	return base + jitter
+}
+
+```
+
+Substituir o `time.Sleep(10 * time.Millisecond)` fixo por `time.Sleep(jitteredBackoff(attempt))` quebra o lock-step. Uma goroutine eventualmente vence, e a base exponencial reduz a pressão de contenção ao longo do tempo.
+
+<Callout type="note" title="Channels em vez de mutexes">
+  Muitos cenários de livelock desaparecem quando você usa channels em vez de
+  mutexes para coordenar o acesso. A filosofia do Go — *"não se comunique
+  compartilhando memória; compartilhe memória se comunicando"* — naturalmente
+  evita os loops de retry que livelocks exigem. Vamos explorar channels em
+  profundidade em um artigo futuro.
+</Callout>
+
+## Starvation
+
+**Starvation** ocorre quando uma goroutine é perpetuamente incapaz de adquirir um recurso porque outras goroutines continuam reivindicando-o primeiro. A goroutine privada não faz progresso, mas ao contrário de um deadlock, o restante do programa continua rodando normalmente. Não há congelamento — apenas uma goroutine silenciosamente deixada para trás.
+
+Starvation tipicamente emerge de falta de fairness: uma goroutine que segura um lock brevemente, libera-o e imediatamente o readquire antes que goroutines em espera tenham chance de rodar.
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+	"time"
+)
+
+func main() {
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	// goroutine gulosa: segura o lock por 50ms, libera por apenas 1ms
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 5; i++ {
+			mu.Lock()
+			time.Sleep(50 * time.Millisecond) // segura por 50ms
+			mu.Unlock()
+			time.Sleep(1 * time.Millisecond)  // mal libera antes de readquirir
+		}
+	}()
+
+	// goroutine privada: precisa esperar pelos 5 ciclos completos
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		start := time.Now()
+		mu.Lock()
+		fmt.Printf("acquired the lock after waiting %v\n", time.Since(start))
+		mu.Unlock()
+	}()
+
+	wg.Wait()
+}
+
+```
+
+A goroutine privada pode esperar mais de 250ms — cinco ciclos completos da goroutine gulosa — antes de ter uma única chance. O scheduler do runtime do Go faz um esforço para ser justo, mas não oferece garantias rígidas contra esse padrão.
+
+Starvation não se limita à programação concorrente. Um scheduler de sistema operacional que sempre favorece processos de alta prioridade priva os de baixa prioridade. Um banco de dados que sempre serve transações curtas primeiro priva queries de longa duração. O padrão é universal: um recurso consistentemente consumido mais rápido do que se torna disponível para quem espera.
+
+## Prevenindo starvation
+
+### sync.RWMutex para workloads com muitas leituras
+
+Quando a maioria das goroutines só precisa ler dados compartilhados, `sync.Mutex` é desnecessariamente restritivo — bloqueia todos os leitores mesmo que leituras concorrentes sejam seguras. `sync.RWMutex` permite qualquer número de leitores concorrentes, enquanto escritores ainda obtêm acesso exclusivo. Isso reduz drasticamente a contenção e a oportunidade de starvation em cenários com muitas leituras.
+
+```go
+var mu sync.RWMutex
+
+// múltiplas goroutines podem segurar RLock simultaneamente
+mu.RLock()
+value := sharedData
+mu.RUnlock()
+
+// Lock bloqueia todos os outros leitores e escritores
+mu.Lock()
+sharedData = newValue
+mu.Unlock()
+
+```
+
+### Aging
+
+Aging é uma técnica de scheduling que aumenta gradualmente a prioridade efetiva de uma goroutine em espera quanto mais tempo ela aguarda. Quando sua prioridade sobe o suficiente, ela é agendada à frente dos recém-chegados. A biblioteca padrão do Go não oferece aging nativamente, mas é possível implementá-lo com uma priority queue e uma goroutine dedicada de scheduling.
+
+### Fair queuing
+
+Para fairness explícita, substitua a competição desordenada pelo mutex por uma fila ordenada. Goroutines esperando por um recurso entram em um channel FIFO; o recurso é concedido em ordem de chegada, tornando starvation indefinida impossível.
+
+```go
+// um semáforo justo simples: requests são servidos na ordem de chegada
+type FairLock struct {
+	queue chan chan struct{}
+}
+
+```
+
+Implementações completas envolvem mais estrutura, mas o princípio é direto: ordem de chegada determina ordem de atendimento.
+
+## Resumo
+
+|                        | Deadlock                       | Livelock                 | Starvation                   |
+| ---------------------- | ------------------------------ | ------------------------ | ---------------------------- |
+| Goroutines bloqueadas? | Todas                          | Nenhuma (ativas em loop) | Algumas                      |
+| Progresso?             | Nenhum                         | Nenhum                   | Parcial                      |
+| Go detecta?            | Sim — runtime panic            | Não                      | Não                          |
+| Causa principal        | Dependência circular de locks  | Retries sincronizados    | Acesso desigual a recursos   |
+| Prevenção              | Ordenação consistente de locks | Jitter no delay de retry | RWMutex, fair queuing, aging |
+
+Esses três riscos surgem da mesma tensão fundamental: proteger recursos compartilhados enquanto se permite que múltiplas goroutines progridam. Deadlocks são os mais visíveis e os mais fáceis de raciocinar — o programa congela ou entra em panic. Livelocks e starvation são mais sutis: o programa roda, mas não corretamente.

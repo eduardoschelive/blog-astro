@@ -1,0 +1,238 @@
+---
+title: Operators
+description: Master Go's operators — arithmetic, comparison, logical, bitwise, and assignment. Learn operator precedence and how Go handles expressions.
+slug: operators
+publishedAt: '2026-04-07'
+keywords:
+  [
+    golang,
+    go operators,
+    go arithmetic operators,
+    go comparison operators,
+    go logical operators,
+    go bitwise operators,
+    go operator precedence,
+    go bit shift,
+    go unary operators,
+  ]
+---
+
+## Expressions and operands
+
+An **operator** is a symbol that tells the compiler to perform a specific operation. The values the operator acts on are called **operands**, and the combination of operator and operands is called an **expression**.
+
+```go
+a + b   // operator: +, operands: a and b, result: their sum
+!valid  // operator: !, operand: valid, result: logical negation
+```
+
+Go operators come in two forms:
+
+- **Binary operators** act on two operands — one on each side: `a + b`, `x == y`
+- **Unary operators** act on a single operand, always written to the left: `!x`, `&v`, `-n`
+
+The two exceptions are `++` and `--`, which are written to the right (postfix): `i++`, `i--`.
+
+## Arithmetic operators
+
+Arithmetic operators perform mathematical calculations on numeric types.
+
+| Operator | Description        | Example |
+| -------- | ------------------ | ------- |
+| `+`      | Addition           | `a + b` |
+| `-`      | Subtraction        | `a - b` |
+| `*`      | Multiplication     | `a * b` |
+| `/`      | Division           | `a / b` |
+| `%`      | Remainder (modulo) | `a % b` |
+
+<Callout type="note" title="Integer division truncates">
+  When both operands are integers, `/` performs integer division — the result is
+  truncated toward zero, not rounded. `7 / 2` is `3`, not `3.5`. To get a float
+  result, at least one operand must be a float: `7.0 / 2` gives `3.5`.
+</Callout>
+
+The `+` operator also works for string concatenation:
+
+```go
+greeting := "Hello, " + "World!" // "Hello, World!"
+```
+
+## Comparison operators
+
+Comparison operators compare two values and return a `bool`.
+
+| Operator | Description           | Example  |
+| -------- | --------------------- | -------- |
+| `==`     | Equal                 | `a == b` |
+| `!=`     | Not equal             | `a != b` |
+| `<`      | Less than             | `a < b`  |
+| `<=`     | Less than or equal    | `a <= b` |
+| `>`      | Greater than          | `a > b`  |
+| `>=`     | Greater than or equal | `a >= b` |
+
+```go
+fmt.Println(10 == 10) // true
+fmt.Println(10 != 5)  // true
+fmt.Println(3 > 7)    // false
+```
+
+## Logical operators
+
+Logical operators combine or invert boolean expressions. They are the building blocks of conditional logic.
+
+| Operator | Description                               | Example    |
+| -------- | ----------------------------------------- | ---------- |
+| `&&`     | AND — true if both operands are true      | `a && b`   |
+| `\|\|`   | OR — true if at least one operand is true | `a \|\| b` |
+| `!`      | NOT — inverts a boolean value             | `!a`       |
+
+```go
+x := 5
+fmt.Println(x > 0 && x < 10)  // true — x is between 0 and 10
+fmt.Println(x < 0 || x > 3)   // true — x is greater than 3
+fmt.Println(!(x == 5))         // false — x is 5, negated
+```
+
+<Callout type="note" title="Short-circuit evaluation">
+  `&&` and `||` use short-circuit evaluation. In `a && b`, if `a` is false, `b`
+  is never evaluated — the result is already false. In `a || b`, if `a` is true,
+  `b` is skipped. This matters when the right operand has side effects or could
+  panic (such as a nil pointer dereference).
+</Callout>
+
+## Bitwise operators
+
+Bitwise operators work directly on the binary representation of integers, one bit at a time.
+
+| Operator | Description                                                  | Example  |
+| -------- | ------------------------------------------------------------ | -------- |
+| `&`      | AND — bit is 1 only if both bits are 1                       | `a & b`  |
+| `\|`     | OR — bit is 1 if either bit is 1                             | `a \| b` |
+| `^`      | XOR — bit is 1 if exactly one bit is 1                       | `a ^ b`  |
+| `&^`     | AND NOT (bit clear) — clears bits in `a` that are set in `b` | `a &^ b` |
+
+```go
+a := 0b1100 // 12
+b := 0b1010 // 10
+
+fmt.Println(a & b)  // 0b1000 = 8  — only the bit both share
+fmt.Println(a | b)  // 0b1110 = 14 — all bits from either
+fmt.Println(a ^ b)  // 0b0110 = 6  — bits set in one but not both
+fmt.Println(a &^ b) // 0b0100 = 4  — bits in a that b does not have
+```
+
+When used as a **unary** operator, `^` becomes bitwise complement — it flips every bit:
+
+```go
+var x uint8 = 0b00001111
+fmt.Println(^x) // 0b11110000 = 240
+```
+
+## Bit shift operators
+
+Shift operators move the bits of an integer left or right by a specified number of positions.
+
+| Operator | Description                                   | Example  |
+| -------- | --------------------------------------------- | -------- |
+| `<<`     | Left shift — shift bits left, fill with zeros | `a << n` |
+| `>>`     | Right shift — shift bits right                | `a >> n` |
+
+Each left shift by 1 is equivalent to multiplying by 2. Each right shift by 1 is equivalent to dividing by 2:
+
+```go
+x := 1
+
+fmt.Println(x << 1) // 2  — 1 × 2¹
+fmt.Println(x << 2) // 4  — 1 × 2²
+fmt.Println(x << 3) // 8  — 1 × 2³
+
+y := 16
+fmt.Println(y >> 1) // 8  — 16 ÷ 2
+fmt.Println(y >> 2) // 4  — 16 ÷ 4
+```
+
+A practical use is constructing bit masks — patterns used to test, set, or clear specific bits:
+
+```go
+const (
+    Read    = 1 << iota // 0001 — bit 0
+    Write               // 0010 — bit 1
+    Execute             // 0100 — bit 2
+)
+
+permissions := Read | Write  // 0011
+
+fmt.Println(permissions & Read)    // non-zero — Read is set
+fmt.Println(permissions & Execute) // 0 — Execute is not set
+```
+
+## Other operators
+
+A few operators do not fit neatly into the categories above.
+
+**`++` and `--`** increment and decrement a numeric variable by 1. In Go they are **statements**, not expressions — you cannot use them in the middle of an expression or on the left side of an assignment:
+
+```go
+i := 5
+i++ // i is now 6
+i-- // i is now 5
+
+x := i++ // compile error: i++ is a statement, not an expression
+```
+
+Unlike C and Java, Go only supports postfix form: `i++` is valid, `++i` is not.
+
+**`&` (address-of)** returns the memory address of a variable, producing a pointer:
+
+```go
+x := 42
+p := &x // p is a *int pointing to x
+```
+
+**`*` (dereference)** accesses the value stored at a pointer address:
+
+```go
+fmt.Println(*p) // 42 — the value x holds
+*p = 100        // modifies x through the pointer
+fmt.Println(x)  // 100
+```
+
+**`<-` (channel operator)** sends a value into a channel or receives a value from one:
+
+```go
+ch := make(chan int)
+ch <- 42    // send 42 into the channel
+v := <-ch   // receive a value from the channel
+```
+
+## Operator precedence
+
+When an expression contains multiple operators, Go evaluates them in a defined order. Higher precedence means the operator binds tighter — it is evaluated first.
+
+| Precedence  | Operators                      |
+| ----------- | ------------------------------ |
+| 5 (highest) | `*` `/` `%` `<<` `>>` `&` `&^` |
+| 4           | `+` `-` `\|` `^`               |
+| 3           | `==` `!=` `<` `<=` `>` `>=`    |
+| 2           | `&&`                           |
+| 1 (lowest)  | `\|\|`                         |
+
+```go
+2 + 3*4     // 14 — multiplication before addition
+true || false && false  // true — && binds tighter than ||
+```
+
+Unary operators have the highest precedence of all and always bind to their immediate operand.
+
+When in doubt, use parentheses. They override precedence and make intent explicit:
+
+```go
+(2 + 3) * 4   // 20 — addition forced first
+result := (x > 0) && (x < 100)
+```
+
+<Callout type="note" title="No exponentiation operator">
+  Go has no `**` operator. For powers, use `math.Pow(base, exp)`, which returns
+  a `float64`. For integer powers, you need to write a loop or use bit shifting
+  when the exponent is a power of two.
+</Callout>

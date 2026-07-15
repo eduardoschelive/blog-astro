@@ -1,0 +1,136 @@
+---
+title: Structs
+description: Learn how Go structs let you model real-world data by grouping fields into custom types. Covers zero values, positional vs named initialization, and dot notation.
+slug: structs
+publishedAt: '2026-04-08'
+keywords:
+  [
+    golang,
+    go structs,
+    struct type go,
+    zero value struct,
+    named initialization go,
+    struct dot notation,
+    composite types go,
+    custom types go,
+  ]
+---
+
+## Structs
+
+Production applications regularly work with data that doesn't fit neatly into a single primitive type. A `User` is not just a string — it has a name, an email, and an age. A `Server` is not just an integer — it has an address, a port, and a timeout. Go's `struct` type solves this by letting you define your own composite data types, grouping related fields together under a single name.
+
+A struct is defined using the `type` and `struct` keywords:
+
+```go
+type Point struct {
+    X float64
+    Y float64
+}
+
+```
+
+Each line inside the braces declares a **field**: a name followed by a type. Fields can be of any type — primitives, other structs, slices, maps, or pointers. Together, they describe the shape of the data your type holds.
+
+Here is a more complete example:
+
+```go
+type Student struct {
+    Name   string
+    Age    int
+    Grade  float64
+    Active bool
+}
+
+```
+
+Once defined, `Student` is a full type in Go — you can declare variables of that type, pass it to functions, store it in slices, and use it anywhere a type is expected.
+
+### Zero value struct
+
+The zero value of a struct is a struct where every field is set to its own zero value: `0` for numeric types, `false` for booleans, `""` for strings, and `nil` for pointers, slices, maps, and interfaces.
+
+A zero value struct can be created with a `var` declaration:
+
+```go
+var s Student
+
+fmt.Println(s.Name)   // ""
+fmt.Println(s.Age)    // 0
+fmt.Println(s.Grade)  // 0
+fmt.Println(s.Active) // false
+
+```
+
+It can also be created with a short variable declaration using an empty struct literal:
+
+```go
+s := Student{}
+
+```
+
+Both forms produce identical results — a fully initialized struct where every field holds its type's zero value. There are no uninitialized structs in Go.
+
+### Initializing field values
+
+Go provides two syntaxes for initializing a struct with specific values.
+
+**Implicit (positional) initialization** — values are provided in the exact order the fields are declared, without field names:
+
+```go
+s := Student{"Alice", 20, 9.1, true}
+
+```
+
+This is compact, but fragile — if you add a field, remove one, or reorder them, every positional callsite silently breaks.
+
+**Explicit (named) initialization** — field names are specified alongside values:
+
+```go
+s := Student{
+    Name:   "Alice",
+    Age:    20,
+    Grade:  9.1,
+    Active: true,
+}
+
+```
+
+This is the idiomatic style in Go. Fields can appear in any order, and any field you omit is automatically set to its zero value. This form is resilient to changes in the struct definition.
+
+<Callout type="warning" title="Prefer named initialization">
+  Positional initialization is fragile — any change to the struct's field order
+  or count silently corrupts every callsite that uses it. Always prefer named
+  fields except for very small, stable structs.
+</Callout>
+
+### Dot notation
+
+Fields are read and written using dot notation: `variable.FieldName`.
+
+**Reading a field:**
+
+```go
+s := Student{Name: "Alice", Age: 20, Grade: 9.1, Active: true}
+
+fmt.Println(s.Name)   // "Alice"
+fmt.Println(s.Age)    // 20
+fmt.Println(s.Grade)  // 9.1
+fmt.Println(s.Active) // true
+
+```
+
+**Writing a field:**
+
+```go
+s := Student{Name: "Alice", Age: 20, Grade: 9.1, Active: true}
+
+s.Age = 21
+s.Grade = 9.5
+
+fmt.Println(s.Age)   // 21
+fmt.Println(s.Grade) // 9.5
+
+```
+
+Dot notation works the same way regardless of how the struct was created — with `var`, a struct literal, or any other form.

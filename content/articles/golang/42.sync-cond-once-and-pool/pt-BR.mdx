@@ -1,0 +1,289 @@
+---
+title: sync — Cond, Once e Pool
+description: 'Aprenda primitivos avançados do sync: condition variables para sinalização de eventos, Once para inicialização segura e Pool para reduzir pressão no GC.'
+slug: sync-cond-once-e-pool
+publishedAt: '2026-05-06'
+keywords:
+  - golang
+  - sync
+  - Cond
+  - Once
+  - Pool
+  - concorrência
+  - condition variable
+  - object pool
+---
+
+O [artigo anterior](/pt-BR/categorias/golang/artigos/sync-waitgroup-e-mutexes) cobriu os primitivos `sync` mais usados: WaitGroup para coordenação de goroutines e Mutex/RWMutex para proteger estado compartilhado. O package `sync` também fornece três ferramentas mais especializadas — `Cond`, `Once` e `Pool` — que resolvem problemas mais restritos, porém recorrentes, em programas concorrentes. Cada uma endereça uma situação onde os primitivos de uso geral não se encaixam ou exigiriam gambiarras.
+
+## sync.Cond
+
+Um `sync.Mutex` é útil quando você quer proteger uma seção crítica. Mas às vezes o problema é diferente: uma goroutine precisa esperar não apenas pelo acesso exclusivo, mas por uma _condição_ se tornar verdadeira — por exemplo, esperar até que uma fila tenha itens, ou até que uma flag seja definida.
+
+A abordagem ingênua é fazer polling em um loop:
+
+```go
+for len(queue) == 0 {
+    // fica girando, consumindo CPU enquanto espera
+}
+
+```
+
+Isso desperdiça um núcleo de CPU. Uma versão um pouco melhor usa `time.Sleep` dentro do loop, mas ainda faz polling em um intervalo fixo e introduz latência artificial.
+
+`sync.Cond` fornece a abstração correta: uma goroutine pode **dormir** até ser explicitamente acordada por outra goroutine que sabe que a condição mudou.
+
+### Estrutura
+
+Um `Cond` é criado com `sync.NewCond`, que recebe um `sync.Locker` — tipicamente um `*sync.Mutex` ou `*sync.RWMutex`:
+
+```go
+var mu sync.Mutex
+cond := sync.NewCond(&mu)
+
+```
+
+Os três métodos do `Cond` são:
+
+| Método        | Descrição                                                                                               |
+| ------------- | ------------------------------------------------------------------------------------------------------- |
+| `Wait()`      | Libera atomicamente o mutex e suspende a goroutine. Readquire o lock antes de retornar quando acordada. |
+| `Signal()`    | Acorda uma goroutine esperando neste Cond.                                                              |
+| `Broadcast()` | Acorda todas as goroutines esperando neste Cond.                                                        |
+
+A regra crítica: `Wait` deve sempre ser chamado dentro de um loop `for`, não de um `if`:
+
+```go
+mu.Lock()
+for !conditionMet() {
+    cond.Wait()
+}
+// condição agora é verdadeira — seguro prosseguir
+mu.Unlock()
+
+```
+
+O loop é necessário por causa de **spurious wakeups**: `Wait` pode retornar sem que `Signal` ou `Broadcast` tenha sido chamado. O loop re-verifica a condição e volta a dormir se ela ainda for falsa. Esse padrão é padrão para condition variables em todas as linguagens.
+
+### Exemplo: producer e consumer
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+	"time"
+)
+
+func main() {
+	var mu sync.Mutex
+	cond := sync.NewCond(&mu)
+	queue := make([]int, 0)
+
+	// consumer: dorme até que itens estejam disponíveis
+	go func() {
+		mu.Lock()
+		for len(queue) == 0 {
+			cond.Wait()
+		}
+		item := queue[0]
+		queue = queue[1:]
+		mu.Unlock()
+		fmt.Printf("consumed: %d\n", item)
+	}()
+
+	// producer: adiciona um item e sinaliza o consumer
+	time.Sleep(50 * time.Millisecond)
+	mu.Lock()
+	queue = append(queue, 42)
+	cond.Signal()
+	mu.Unlock()
+
+	time.Sleep(100 * time.Millisecond)
+}
+
+```
+
+O consumer chama `Wait`, que libera atomicamente o lock e o suspende. O producer adquire o lock, adiciona à fila, chama `Signal` para acordar uma goroutine esperando, e libera o lock. O consumer acorda, readquire o lock, encontra a fila não-vazia e processa o item.
+
+Use `Signal` quando apenas uma goroutine esperando precisa ser acordada e pode lidar sozinha com a condição alterada. Use `Broadcast` quando todos os waiters precisam re-avaliar — por exemplo, quando um recurso compartilhado se torna disponível e múltiplas goroutines estão competindo por ele.
+
+<Callout type="note" title="Channels frequentemente são mais simples">
+  Para padrões básicos de producer/consumer, um channel com buffer geralmente é
+  um Go mais idiomático. `sync.Cond` brilha quando a condição é mais complexa do
+  que "um valor está disponível" — por exemplo, esperar até que um contador
+  ultrapasse um limite ou até que múltiplas condições independentes sejam todas
+  verdadeiras simultaneamente — onde codificar essa lógica em um channel
+  exigiria coordenação complicada.
+</Callout>
+
+## sync.Once
+
+`sync.Once` garante que uma função seja executada exatamente uma vez, independentemente de quantas goroutines a chamem concorrentemente. Após a primeira chamada ser concluída, todas as chamadas subsequentes são no-ops.
+
+Toda a API é um único método:
+
+```go
+var once sync.Once
+once.Do(func() {
+    // executa exatamente uma vez, sempre
+})
+
+```
+
+`Do` é thread-safe. Se múltiplas goroutines chamarem `Do` ao mesmo tempo, exatamente uma executa a função; as outras bloqueiam até que ela retorne. Uma vez que a função retornou, todas as chamadas futuras a `Do` retornam imediatamente sem re-executar.
+
+### Usos
+
+**Lazy initialization** é o principal caso de uso. Em vez de inicializar um recurso no momento do carregamento do package — o que gera custo mesmo que o recurso nunca seja necessário — você o inicializa na primeira utilização:
+
+```go
+package main
+
+import (
+	"database/sql"
+	"fmt"
+	"sync"
+
+	_ "github.com/lib/pq"
+)
+
+var (
+	db   *sql.DB
+	once sync.Once
+)
+
+func getDB() *sql.DB {
+	once.Do(func() {
+		var err error
+		db, err = sql.Open("postgres", "postgres://localhost/mydb?sslmode=disable")
+		if err != nil {
+			panic(err)
+		}
+	})
+	return db
+}
+
+func main() {
+	conn := getDB() // primeira chamada: abre o connection pool
+	fmt.Println(conn != nil)
+
+	conn2 := getDB() // chamadas subsequentes: retorna a mesma instância
+	fmt.Println(conn == conn2) // true
+}
+
+```
+
+O connection pool é criado apenas quando `getDB` é chamado pela primeira vez — e somente uma vez, independentemente de quantos callers concorrentes chegam ao mesmo tempo. Cada chamada subsequente retorna a mesma instância de `*sql.DB`.
+
+<Callout type="warning" title="Panics dentro de Do não são repetidos">
+  Se a função passada para `Do` entrar em panic, `Once` ainda considera a
+  chamada como tendo sido executada. Chamadas futuras para `Do` não vão tentar
+  novamente. Se a inicialização pode falhar e você precisa da capacidade de
+  retry, gerencie essa lógica você mesmo em vez de depender do `Once`.
+</Callout>
+
+**Inicialização em nível de package** é outro uso comum, particularmente para helpers de teste ou funcionalidades opcionais que são caras de configurar. `Once` fornece a segurança do `init()` — executa somente uma vez — com a preguiça da inicialização sob demanda — executa apenas quando necessário pela primeira vez.
+
+## sync.Pool
+
+Um `sync.Pool` é uma free list thread-safe: um pool de objetos que podem ser salvos e reutilizados em vez de alocados e coletados pelo garbage collector a cada uso.
+
+Em programas com alto throughput de requests — servidores HTTP, parsers, encoders — muitos objetos de curta duração são alocados e liberados em rápida sucessão. Cada alocação aumenta a pressão no garbage collector. Um Pool permite reciclar esses objetos em vez de continuamente criar novos, reduzindo o overhead do GC e melhorando o throughput sustentado.
+
+### Estrutura
+
+```go
+var pool = sync.Pool{
+    New: func() any {
+        return new(bytes.Buffer)
+    },
+}
+
+```
+
+O field `New` é uma factory function chamada quando `Get` precisa de um objeto e o pool está vazio. Se `New` for nil e o pool estiver vazio, `Get` retorna nil.
+
+Os dois métodos são:
+
+| Método       | Descrição                                                                       |
+| ------------ | ------------------------------------------------------------------------------- |
+| `Get()`      | Recupera um objeto do pool. Chama `New` se o pool estiver vazio. Retorna `any`. |
+| `Put(x any)` | Retorna um objeto ao pool para reutilização futura.                             |
+
+### Exemplo: buffer pool para encoding
+
+Um padrão comum é fazer pool de objetos `bytes.Buffer` para encoding JSON em um caminho crítico de performance:
+
+```go
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"sync"
+)
+
+var bufPool = sync.Pool{
+	New: func() any {
+		return new(bytes.Buffer)
+	},
+}
+
+type Response struct {
+	Message string `json:"message"`
+}
+
+func encode(v any) ([]byte, error) {
+	buf := bufPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer bufPool.Put(buf)
+
+	if err := json.NewEncoder(buf).Encode(v); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func main() {
+	data, err := encode(Response{Message: "hello"})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(string(data))
+}
+
+```
+
+`Get` recupera um buffer do pool (ou aloca um se o pool estiver vazio). Após resetá-lo com `buf.Reset()`, o buffer é usado para encoding. `defer bufPool.Put(buf)` retorna o buffer ao pool quando a função encerra, tornando-o disponível para a próxima chamada.
+
+Sob carga sustentada, o pool atinge um estado estável onde buffers circulam entre em-uso e disponível, com poucas novas alocações necessárias. É por isso que `sync.Pool` é usado internamente pelos packages `fmt` e `encoding/json` da biblioteca padrão do Go.
+
+### Como o pool funciona
+
+Internamente, Pool mantém uma lista local por P (por processor). `Put` armazena o objeto no slot local do P da goroutine atual. `Get` verifica o slot local primeiro, depois rouba de outros Ps, depois chama `New`.
+
+O garbage collector do Go **pode limpar o pool** em qualquer ciclo de coleta. Objetos no pool não são protegidos do GC. Isso é por design — Pool é uma otimização de performance, não um armazenamento persistente. Programas devem estar preparados para o pool estar vazio a qualquer momento.
+
+<Callout type="warning" title="Pool não é um connection pool">
+  `sync.Pool` é projetado para objetos baratos de recriar e seguros de descartar
+  — byte buffers, slices temporários, structs de rascunho. Não o use para
+  objetos que seguram recursos de nível de OS como conexões de rede, file
+  descriptors ou goroutines. Se o GC limpar o pool, esses recursos são vazados,
+  não reutilizados. Use um connection pool dedicado — como o pool built-in do
+  `database/sql` — para recursos com suporte de OS.
+</Callout>
+
+## O que isso significa na prática
+
+`sync.Cond`, `sync.Once` e `sync.Pool` cada um resolve um problema específico que WaitGroup e a família de mutexes deixam sem cobertura.
+
+Use `Cond` quando uma goroutine precisa dormir até que uma condição que outra goroutine irá sinalizar — especialmente quando a condição é mais sutil do que receber um valor de um channel.
+
+Use `Once` para inicialização lazy e thread-safe de recursos que são caros de criar ou que devem existir como exatamente uma instância.
+
+Use `Pool` para reduzir o overhead de alocação por operação em caminhos sensíveis a throughput, aceitando que o pool pode ser limpo pelo GC a qualquer momento.
+
+Juntos, os seis primitivos neste par de artigos — WaitGroup, Mutex, RWMutex, Cond, Once e Pool — fornecem um toolkit completo para os desafios mais comuns de coordenação e gerenciamento de memória em Go concorrente.

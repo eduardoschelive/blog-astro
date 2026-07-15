@@ -1,0 +1,319 @@
+---
+title: Arrays and slices
+description: Master Go's two core sequence types — fixed-size arrays and dynamic slices. Learn how slices wrap arrays under the hood, how capacity and growth work, and how to avoid the shared-memory pitfalls.
+slug: arrays-and-slices
+publishedAt: '2026-04-08'
+keywords:
+  [
+    golang,
+    go arrays,
+    go slices,
+    go slice vs array,
+    go append,
+    go make,
+    go slice capacity,
+    go slice internals,
+    go nil slice,
+  ]
+---
+
+## Arrays
+
+An array is a fixed-size, ordered collection of elements of the same type, stored in contiguous blocks of memory. Each position in the array is called an element, and each element is accessed by its **index** — a zero-based integer offset from the start.
+
+```go
+var temperatures [5]float64
+
+temperatures[0] = 20.1
+temperatures[1] = 22.5
+temperatures[2] = 19.8
+temperatures[3] = 23.4
+temperatures[4] = 21.0
+
+fmt.Println(temperatures[0]) // 20.1
+fmt.Println(temperatures[4]) // 21.0
+fmt.Println(len(temperatures)) // 5
+
+```
+
+The `len` built-in returns the number of elements in an array. Since the length is fixed, `len` always returns the same value for a given array type.
+
+### Declaring an array
+
+Go provides several forms for declaring and initializing arrays.
+
+**Basic form:** all elements are set to the [zero value](/categories/golang/articles/variables-and-constants) of the type.
+
+```go
+var counts [4]int // [0, 0, 0, 0]
+
+```
+
+**With elements:** initializes with specific values. The number of values must match the declared length.
+
+```go
+primes := [5]int{2, 3, 5, 7, 11}
+
+```
+
+**Implicit length:** `...` tells the compiler to count the values and set the length for you.
+
+```go
+primes := [...]int{2, 3, 5, 7, 11} // length 5, inferred
+
+```
+
+**Sparse initialization:** only certain indices are specified — the rest get the zero value.
+
+```go
+sparse := [5]int{2: 10, 4: 20} // [0, 0, 10, 0, 20]
+
+```
+
+### Accessing elements
+
+Elements are accessed using bracket notation. Indexes start at zero, so the valid range is `0` to `len(a) - 1`. Accessing an index outside that range causes a **runtime panic**:
+
+```go
+words := [3]string{"go", "is", "fast"}
+
+fmt.Println(words[0]) // "go"
+fmt.Println(words[2]) // "fast"
+
+words[3] // panic: runtime error: index out of range [3] with length 3
+
+```
+
+Go does not silently return a zero value or wrap around — it panics immediately. This makes out-of-bounds bugs easy to detect.
+
+### Benefits of arrays
+
+Because all elements are stored contiguously in memory, accessing any element by index is O(1) — the CPU computes its address directly from the base address and the index. There is no pointer chasing, no indirection. Arrays are as fast as memory access gets.
+
+Common uses include fixed-size buffers (network packets, file headers), lookup tables, and as the foundation for slices.
+
+### Limitations
+
+Arrays in Go have strict limitations that push most real-world code toward slices.
+
+**Fixed size.** Once declared, the length cannot change. You cannot append to an array or remove elements from it.
+
+**Size is part of the type.** `[3]int` and `[4]int` are two distinct, incompatible types. A function that accepts `[3]int` cannot receive a `[4]int`.
+
+**No variable length.** The length must be a constant known at compile time — you cannot use a variable:
+
+```go
+n := 5
+var a [n]int // compile error: non-constant array bound n
+
+```
+
+In most cases, slices are the right choice. Arrays are best reserved for situations where you know the exact size at compile time and need predictable memory layout.
+
+---
+
+## Slices
+
+A slice is a lightweight wrapper around an array. It gives you a dynamic view into an underlying array: you can grow it, shrink it, and pass it around without copying the data.
+
+A slice has three components under the hood:
+
+- A **pointer** to the start of its window into the underlying array
+- A **length** — the number of elements currently visible through the slice
+- A **capacity** — the total number of elements available from the pointer to the end of the underlying array
+
+```go
+s := []int{10, 20, 30, 40, 50}
+
+fmt.Println(len(s)) // 5 — number of elements in the slice
+fmt.Println(cap(s)) // 5 — size of the underlying array
+
+```
+
+### Declaring a slice
+
+Slices are declared without a length — that is what distinguishes them from arrays syntactically.
+
+**Nil slice:** The zero value of a slice is `nil`. It has no underlying array, length 0, and capacity 0.
+
+```go
+var s []int // nil slice
+
+```
+
+**Empty slice:** Has an underlying array (allocated but with no elements stored), length 0, and capacity 0.
+
+```go
+s := []int{} // empty slice
+
+```
+
+**With elements:**
+
+```go
+s := []int{10, 20, 30}
+
+```
+
+### nil vs empty slice
+
+A nil slice and an empty slice behave identically in almost every situation — `len` returns 0, `cap` returns 0, `range` iterates zero times, and `append` works on both. The difference surfaces in one specific place: JSON encoding.
+
+```go
+var a []int  // nil slice
+b := []int{} // empty slice
+
+fmt.Println(a == nil) // true
+fmt.Println(b == nil) // false
+fmt.Println(len(a) == len(b)) // true — both 0
+
+```
+
+`json.Marshal` encodes a nil slice as `null` and an empty slice as `[]`. For most other purposes, prefer nil slices — they are the idiomatic zero value.
+
+### The make function
+
+`make` creates a slice with a specified length and optional capacity. It is the preferred way to create a slice when you know the size but do not have initial values yet.
+
+```go
+s := make([]int, 5)      // len=5, cap=5
+s := make([]int, 3, 10)  // len=3, cap=10
+
+```
+
+Providing a capacity hint when you know roughly how many elements you will append avoids unnecessary reallocations later.
+
+### The append function
+
+`append` adds one or more elements to the end of a slice and returns the updated slice. You must assign the return value — if `append` needs to allocate a new underlying array, the original variable is left pointing to the old one.
+
+```go
+s := []int{1, 2, 3}
+s = append(s, 4)        // [1, 2, 3, 4]
+s = append(s, 5, 6, 7)  // [1, 2, 3, 4, 5, 6, 7]
+
+```
+
+To merge two slices, expand the second with `...`:
+
+```go
+a := []int{1, 2, 3}
+b := []int{4, 5, 6}
+c := append(a, b...) // [1, 2, 3, 4, 5, 6]
+
+```
+
+<Callout type="warning" title="Always assign the return value of append">
+  If you call `append` without assigning the result, the changes are silently
+  discarded. This is a common mistake that the compiler does not catch because
+  `append` is a valid expression on its own.
+</Callout>
+
+### Behind the scenes: growth
+
+When `append` needs more capacity than available, Go allocates a new, larger underlying array, copies all existing elements into it, and returns a slice pointing to the new array. This is automatic — you never manage it manually.
+
+The growth strategy in Go is roughly:
+
+- For small slices (under ~256 elements): double the capacity
+- For larger slices: grow by approximately 25%
+
+```go
+s := make([]int, 0, 2)
+for i := 0; i < 6; i++ {
+    s = append(s, i)
+    fmt.Printf("len=%d cap=%d\n", len(s), cap(s))
+}
+// len=1 cap=2
+// len=2 cap=2
+// len=3 cap=4  ← new array allocated, capacity doubled
+// len=4 cap=4
+// len=5 cap=8  ← new array allocated, capacity doubled
+// len=6 cap=8
+
+```
+
+Each reallocation is O(n) — but because the capacity doubles each time, the total work across all appends is amortized O(1) per element.
+
+### Indexing
+
+Slices use the same bracket notation as arrays and are also zero-indexed. The valid range is `0` to `len(s) - 1`. Accessing outside that range causes a runtime panic, just like arrays:
+
+```go
+s := []int{10, 20, 30}
+fmt.Println(s[0]) // 10
+fmt.Println(s[2]) // 30
+
+s[-1] // panic: index out of range [-1]
+s[3]  // panic: index out of range [3] with length 3
+
+```
+
+### Slicing
+
+You can create a new slice from an existing slice or array using a slice expression `s[low:high]`. The result is a new slice header pointing into the **same underlying array** — no data is copied.
+
+```go
+a := []int{10, 20, 30, 40, 50}
+b := a[1:4] // [20, 30, 40]
+
+```
+
+The range is **half-open**: it includes the element at `low` and excludes the element at `high`. `a[1:4]` covers indices 1, 2, and 3 — three elements.
+
+Either bound can be omitted:
+
+```go
+a[:3] // first three elements: [10, 20, 30]
+a[2:] // from index 2 to end: [30, 40, 50]
+a[:]  // entire slice: [10, 20, 30, 40, 50]
+
+```
+
+The capacity of the new slice extends from `low` to the end of the underlying array:
+
+```go
+a := []int{10, 20, 30, 40, 50}
+b := a[1:3] // len=2, cap=4 (from index 1 to end of a's backing array)
+
+```
+
+### The ripple effect
+
+Because slicing does not copy data, modifying elements through one slice modifies the underlying array — and any other slice sharing it:
+
+```go
+a := []int{10, 20, 30, 40, 50}
+b := a[1:4]
+
+b[0] = 99
+
+fmt.Println(a) // [10, 99, 30, 40, 50] — a[1] changed through b
+fmt.Println(b) // [99, 30, 40]
+
+```
+
+This also applies to `append` when there is remaining capacity: appending to `b` can overwrite elements of `a` that are beyond `b`'s current length.
+
+<Callout type="warning" title="append on a sub-slice can overwrite the parent">
+  If `b := a[1:3]` and `cap(b) > len(b)`, then `append(b, x)` writes `x` into
+  `a[3]` — the position just past `b`'s end in the shared array. This is one of
+  the most surprising behaviors in Go slices.
+</Callout>
+
+### Avoiding the ripple effect with copy
+
+When you need an independent slice that does not share memory with the source, use `copy`:
+
+```go
+src := []int{10, 20, 30, 40, 50}
+dst := make([]int, len(src))
+copy(dst, src)
+
+dst[0] = 99
+fmt.Println(src) // [10, 20, 30, 40, 50] — unchanged
+fmt.Println(dst) // [99, 20, 30, 40, 50]
+
+```
+
+`copy(dst, src)` copies the minimum of `len(dst)` and `len(src)` elements and returns the number of elements copied. The two slices share nothing after the copy.

@@ -1,0 +1,228 @@
+---
+title: Goroutines e o scheduler do Go
+description: Aprenda o que são goroutines, como diferem de OS threads e green threads, e como o scheduler GMP do Go multiplexa goroutines pelos cores de CPU disponíveis.
+slug: goroutines
+publishedAt: '2026-05-05'
+keywords:
+  - golang
+  - goroutines
+  - scheduler
+  - GMP
+  - concorrência
+  - green threads
+  - coroutines
+---
+
+O [artigo anterior](/pt-BR/categorias/golang/artigos/modelo-de-concorrencia) introduziu goroutines como a unidade básica de execução concorrente do Go e descreveu como channels permitem que elas se comuniquem. Mas a descrição deixou uma pergunta importante sem resposta: o que exatamente _é_ uma goroutine? Ela não é uma OS thread, não é uma green thread e não é uma coroutine — embora pegue ideias das três. Entender o que são goroutines e como o scheduler do Go as gerencia explica por que você pode lançar um milhão delas sem hesitar, e por que programas Go concorrentes parecem fundamentalmente diferentes de se escrever em comparação com outras linguagens.
+
+## Todo programa Go tem pelo menos uma goroutine
+
+Antes de você executar um único statement `go`, seu programa já é concorrente: a função `main` em si roda dentro de uma goroutine, convencionalmente chamada de **goroutine main**. Quando `main` retorna, o runtime do Go encerra todo o programa — independentemente de quantas outras goroutines ainda estão rodando. A goroutine main é a âncora.
+
+Qualquer função pode ser promovida a uma goroutine com a keyword `go`:
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+)
+
+func greet(name string) {
+	fmt.Printf("hello, %s\n", name)
+}
+
+func main() {
+	var wg sync.WaitGroup
+
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		greet("Alice")
+	}()
+	go func() {
+		defer wg.Done()
+		greet("Bob")
+	}()
+
+	fmt.Println("goroutines launched")
+	wg.Wait()
+}
+
+```
+
+A keyword `go` é enganosamente simples. O statement `go greet("Alice")` retorna imediatamente — ele agenda a função para rodar concorrentemente e continua para a próxima linha sem esperar. A ordem de saída das duas saudações não é garantida; qualquer uma pode rodar primeiro, ou ambas podem rodar simultaneamente em diferentes cores de CPU.
+
+<Callout type="note" title="Goroutines não são fire-and-forget">
+  Se `main` retorna antes de uma goroutine ter chance de rodar, essa goroutine é
+  silenciosamente descartada. Sempre coordene o tempo de vida das goroutines —
+  com `sync.WaitGroup`, channels ou um `context` — antes de retornar de `main`.
+</Callout>
+
+## OS threads
+
+Para entender o que torna goroutines incomuns, ajuda começar com o primitivo de concorrência mais familiar: a **OS thread**.
+
+Uma thread é a unidade de agendamento de CPU do sistema operacional. Todo processo tem pelo menos uma thread (a que roda `main`), e pode criar threads adicionais para fazer trabalho concorrentemente. O kernel do SO agenda threads em cores de CPU, as preempta quando seu time slice expira e alterna entre elas conforme necessário.
+
+OS threads são poderosas mas custosas:
+
+- **Tamanho da stack**: o SO tipicamente aloca uma stack fixa de 1–8 MB por thread no momento da criação. A maior parte desse espaço fica inutilizada para a maioria das threads.
+- **Custo de context switch**: alternar entre threads exige que o kernel salve e restaure dezenas de registradores de CPU, alterne o contexto de proteção de memória e libere partes do pipeline de CPU. Isso leva milhares de nanossegundos.
+- **Envolvimento do kernel**: criar, destruir e agendar threads requer system calls — transições do user space para o kernel e de volta.
+
+Para servidores lidando com milhares de conexões simultâneas, criar uma OS thread por conexão rapidamente se torna impraticável. Só a memória para 10.000 threads — cada uma com uma stack de 2 MB — totaliza 20 GB.
+
+## Green threads
+
+A resposta ao overhead das OS threads foram as **green threads**: threads gerenciadas inteiramente em user space por um runtime de linguagem ou máquina virtual, em vez de pelo kernel do SO.
+
+Green threads são muito mais leves que OS threads. O runtime controla sua criação e agendamento, então não há envolvimento do kernel. Stacks podem começar pequenas e crescer apenas conforme necessário. Context switches acontecem inteiramente em user space — sem system call, sem kernel trap.
+
+A limitação das primeiras implementações de green thread era que elas tipicamente usavam um **modelo M:1**: todas as goroutines multiplexadas em uma única OS thread. Isso significava:
+
+- Sem paralelismo real — no máximo uma goroutine rodava por vez, em um único core de CPU.
+- Uma única system call bloqueante (como uma leitura de arquivo) bloquearia o programa inteiro, já que bloqueava a única OS thread subjacente.
+
+Alguns runtimes resolveram o segundo problema envelopando chamadas bloqueantes, mas o teto de paralelismo de uma única thread permanecia. Versões antigas do Java usavam green threads com essa limitação antes de migrar para OS threads nativas no Java 1.2.
+
+## Coroutines
+
+Uma **coroutine** é uma função que pode suspender sua própria execução e transferir controle para outra coroutine explicitamente. Em vez de o scheduler decidir quando preemptar uma função, a função coopera: ela cede o controle em pontos definidos, passa o controle para outra e retoma mais tarde de onde parou.
+
+Coroutines são elegantes para estruturar programas que lidam com sequências de eventos. Um handler HTTP escrito como uma coroutine pode suspender enquanto espera por uma query de banco de dados, permitir que outros handlers rodem e retomar quando o resultado chegar — sem a complexidade de callbacks ou o overhead de uma OS thread completa por requisição.
+
+Linguagens modernas adotaram coroutines com diferentes nomes: `async`/`await` do Python, funções `suspend` do Kotlin, generators do JavaScript. O fio comum é o agendamento cooperativo — o programador marca explicitamente onde uma função pode ceder o controle.
+
+A força das coroutines é também sua limitação: a cooperação é necessária. Uma coroutine que nunca cede o controle bloqueia tudo que está esperando atrás dela. Código CPU-bound que roda em um loop sem ceder o controle priva outras coroutines de CPU. Os desenvolvedores precisam ser disciplinados sobre quando e onde ceder o controle.
+
+## Goroutines: a síntese
+
+Goroutines são o resultado de pegar as melhores ideias de cada um desses modelos e descartar suas limitações.
+
+|                    | OS threads        | Green threads (M:1)  | Coroutines  | Goroutines                          |
+| ------------------ | ----------------- | -------------------- | ----------- | ----------------------------------- |
+| Gerenciadas por    | Kernel do SO      | Runtime              | Runtime     | Go runtime                          |
+| Stack inicial      | 1–8 MB fixo       | Varia                | Varia       | ~2–4 KB, cresce                     |
+| Agendamento        | Preemptivo        | Cooperativo          | Cooperativo | Preemptivo (Go 1.14+)               |
+| Paralelismo real   | Sim               | Não                  | Não         | Sim (M:N)                           |
+| Context switch     | ~1–10 µs (kernel) | ~100 ns (user space) | ~100 ns     | ~100 ns                             |
+| Bloqueia a thread? | Sim               | Sim (M:1)            | Depende     | Não — runtime estaciona a goroutine |
+
+A inovação principal é o **modelo M:N**: M goroutines são multiplexadas em N OS threads, onde N é tipicamente o número de cores de CPU disponíveis. Isso dá às goroutines o paralelismo das OS threads e a leveza das green threads, enquanto o runtime cuida automaticamente da tensão entre agendamento cooperativo e preemptivo.
+
+## O scheduler do Go
+
+O scheduler do Go é chamado de **scheduler GMP**, pelos seus três componentes:
+
+- **G** — uma goroutine
+- **M** — uma machine (uma OS thread)
+- **P** — um processor (uma CPU lógica, controlada por `GOMAXPROCS`)
+
+Cada P tem uma **fila de execução local**: uma lista de goroutines esperando para rodar. Um P está sempre ligado a exatamente um M (OS thread), e esse M roda uma goroutine por vez. O runtime cria tantos P's quanto `GOMAXPROCS` especifica (padrão: número de cores de CPU) e distribui o trabalho entre eles.
+
+```
+┌──────────────────────────────────────────────────────┐
+│                     Go Runtime                       │
+│                                                      │
+│   ┌──────────────────┐   ┌──────────────────┐        │
+│   │        P1        │   │        P2        │        │
+│   │   fila local     │   │   fila local     │        │
+│   │  [G3] [G4] [G5]  │   │  [G6] [G7]       │        │
+│   └────────┬─────────┘   └────────┬─────────┘        │
+│            │                      │                  │
+│           M1 (OS thread)         M2 (OS thread)      │
+│            │                      │                  │
+│         Core 1                 Core 2                │
+│                                                      │
+│   Fila global: [G8] [G9] [G10] ...                   │
+└──────────────────────────────────────────────────────┘
+
+```
+
+Quando a fila local de um P fica vazia, ele não simplesmente espera. Ele **rouba** goroutines da fila de outro P — tipicamente metade do backlog desse P. Esse work-stealing mantém todos os P's ocupados enquanto houver goroutines para rodar, distribuindo a carga automaticamente sem nenhuma intervenção do programador.
+
+Você pode ler e controlar `GOMAXPROCS` em runtime:
+
+```go
+import (
+	"fmt"
+	"runtime"
+)
+
+func main() {
+	// lê o valor atual (0 = consulta sem alterar)
+	procs := runtime.GOMAXPROCS(0)
+	fmt.Printf("using %d logical processors\n", procs)
+}
+
+```
+
+Em produção, o padrão (número de cores de CPU) é quase sempre o correto. Raramente é necessário alterá-lo.
+
+## Bloqueando sem bloquear
+
+Um dos trabalhos mais importantes do scheduler é lidar com goroutines que bloqueiam. Quando uma goroutine espera por um receive de channel, um mutex ou uma leitura de rede, ela deve pausar — mas não deve manter sua OS thread refém enquanto faz isso.
+
+O runtime cuida disso de forma transparente:
+
+1. A goroutine chama uma operação que bloquearia (ex: receber de um channel vazio).
+2. O runtime **estaciona** a goroutine: remove-a da fila de execução e a marca como em espera.
+3. O P imediatamente agenda a próxima goroutine da sua fila local no mesmo M (OS thread).
+4. Quando a condição de bloqueio se resolve (um valor é enviado para o channel), o runtime **desestaciona** a goroutine — colocando-a de volta em uma fila de execução para ser agendada novamente.
+
+```
+OS threads tradicionais:            Goroutines:
+
+Thread 1 → bloqueia em I/O         G1 → bloqueia em I/O
+           esperando...                  ↓ runtime estaciona G1
+           esperando...             G2 → roda na mesma OS thread
+           esperando...             G3 → roda na mesma OS thread
+Thread 1 ← retoma                   G1 ← desestacionada quando I/O termina
+
+```
+
+O lado esquerdo desperdiça uma OS thread durante toda a duração do I/O. O lado direito mantém a OS thread fazendo trabalho útil. É por isso que um servidor HTTP em Go pode lidar com dezenas de milhares de conexões simultâneas em um punhado de OS threads — as conexões são tratadas por goroutines, e goroutines estacionadas não custam nada em termos de recursos do SO.
+
+Para system calls bloqueantes (como ler de um arquivo), o runtime usa um mecanismo diferente: ele desconecta o P do M antes da system call, conecta o P a um M diferente (criando um se necessário), e continua rodando outras goroutines. Quando a system call retorna, o runtime tenta reconectar o M original a um P.
+
+<Callout type="note" title="I/O de rede é tratado de forma diferente">
+  O Go usa I/O não-bloqueante por baixo dos panos para operações de rede. O
+  runtime se integra com o mecanismo de I/O multiplexing do SO (epoll no Linux,
+  kqueue no macOS) para que goroutines esperando em I/O de rede sejam
+  estacionadas em user space, sem bloquear uma OS thread.
+</Callout>
+
+## Preempção
+
+Versões antigas do Go usavam agendamento puramente cooperativo: uma goroutine só cederia o controle em pontos específicos — chamadas de função, operações de channel, chamadas explícitas a `runtime.Gosched()`. Um loop apertado sem chamadas de função poderia monopolizar um P indefinidamente, privando outras goroutines naquele processador.
+
+O Go 1.14 introduziu **preempção assíncrona**: o runtime envia um sinal para uma OS thread, interrompendo qualquer goroutine que esteja rodando e dando ao scheduler uma chance de alternar para outra. Isso acontece de forma transparente — goroutines não precisam ceder o controle explicitamente, e código CPU-bound não mais priva o scheduler.
+
+```go
+// Antes do Go 1.14, este loop privaria outras goroutines no mesmo P
+// A partir do Go 1.14, é preemptado periodicamente pelo scheduler
+go func() {
+	for {
+		// loop CPU-bound apertado — sem chamadas de função, sem pontos de yield
+		result := heavyComputation()
+		_ = result
+	}
+}()
+
+```
+
+A preempção assíncrona é uma das razões pelas quais você raramente precisa de `runtime.Gosched()` no Go moderno. O scheduler cuida da fairness automaticamente.
+
+## O que isso significa na prática
+
+O modelo GMP tem consequências práticas para como você escreve Go:
+
+**Goroutines são baratas — use-as livremente.** Lançar uma goroutine custa alguns microssegundos e ~2 KB de memória. Se uma tarefa pode rodar independentemente, coloque-a em uma goroutine. Você não precisa construir thread pools ou work queues para gerenciar overhead de concorrência — esse é o trabalho do runtime.
+
+**Bloqueio não é um problema.** Bloquear em um channel, esperar por um mutex, dormir — isso estaciona a goroutine sem desperdiçar uma OS thread. Você não precisa converter cada chamada bloqueante em um callback assíncrono para evitar privar o runtime.
+
+**`GOMAXPROCS` controla paralelismo, não concorrência.** Definir `GOMAXPROCS(1)` torna o programa single-threaded do ponto de vista do SO, mas goroutines ainda rodam concorrentemente via time-slicing naquela única thread. Race conditions ainda existem. O race detector ainda se aplica.
+
+**Goroutines não estão livres de coordenação.** O scheduler cuida do agendamento de baixo nível, mas a coordenação de alto nível — quem envia para quem, quem espera por quê, como o cancelamento se propaga — ainda é responsabilidade do programador. Essa coordenação é expressa através de channels, `sync` e `context`, não através do scheduler em si.

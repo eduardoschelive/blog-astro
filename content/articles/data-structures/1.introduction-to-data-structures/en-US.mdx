@@ -1,0 +1,121 @@
+---
+title: Introduction to Data Structures
+description: Understand how data structures transform random bytes into meaningful patterns. Explore contiguous vs scattered memory, linear vs non-linear structures, and the tradeoffs that shape your code's performance.
+slug: introduction-to-data-structures
+publishedAt: '2025-12-30'
+keywords:
+  [
+    data structures,
+    fundamentals,
+    contiguous memory,
+    scattered memory,
+    arrays,
+    linked lists,
+    complexity,
+    abstract data types,
+    ADT,
+    memory organization,
+  ]
+---
+
+## ADTs vs Data Structures
+
+It's important to understand two fundamental concepts that often get confused:
+
+### Abstract Data Types (ADTs)
+
+Define **what** you can do - which operations exist and their expected behavior. It's the interface contract, the abstract specification. An ADT says "you can push and pop", but doesn't say how it works under the hood.
+
+### Data Structures
+
+Define **how** to do it - the concrete implementation in memory. It's the practical realization of the concept. A data structure shows exactly how bytes are organized and manipulated.
+
+<Example title="Practical example">
+
+A "stack" is an ADT that defines <Tooltip title="Access pattern" content="Last In, First Out - the last element added is the first one removed">LIFO</Tooltip> behavior. You can implement it using arrays or linked lists - different data structures, same abstract behavior. The structure choice affects performance, but the ADT remains the same.
+
+</Example>
+
+## Logical data organization
+
+How elements relate to each other defines the structure's fundamental nature:
+
+### Linear structures
+
+Establish a clear sequential order - there's a first element, a last one, and all intermediates have exactly one predecessor and one successor. Like a line of people: you know who's in front and who's behind you.
+
+<Example title="Linear structure examples">
+
+**Arrays, linked lists, stacks, and queues** are classic examples. In a stack, you pile plates on top of each other - you only access the top one. In a queue, it's like a bank line - first come, first served. Linearity is in the relationship between elements, not necessarily in physical layout.
+
+</Example>
+
+### Non-linear structures
+
+Break this unique sequentiality. Here, an element can connect to several others simultaneously, forming hierarchies or complex networks. Like a family tree or social network.
+
+<Example title="Non-linear structure examples">
+
+**Trees** organize data hierarchically - like folders and files on your computer. **Graphs** represent arbitrary networks - like routes between cities or social network connections. **Hash tables** use mathematical functions to spread data and access it instantly, like a supercharged book index.
+
+</Example>
+
+## Memory perspective
+
+Beyond logical organization, there's the physical question: how are bytes arranged in RAM?
+
+### Contiguous memory
+
+Elements stored in adjacent and sequential positions in memory. Like a street with sequentially numbered houses.
+
+<MemoryVisualization
+  title="RAM Memory:"
+  type="contiguous"
+  blocks={[
+    { address: '0x1000', value: 42, label: 'index 0' },
+    { address: '0x1004', value: 17, label: 'index 1' },
+    { address: '0x1008', value: 93, label: 'index 2' },
+    { address: '0x100C', value: 28, label: 'index 3' },
+  ]}
+>
+  <span className="text-danger">Array:</span>{' '}
+  <span className="text-warning">[</span>
+  <span className="text-success">42, 17, 93, 28</span>
+  <span className="text-warning">]</span>
+</MemoryVisualization>
+
+Arrays work this way. Each element takes 4 bytes, so element `array[2]` is mathematically at `base_address + (2 × 4)`. Instant <Tooltip title="Big O notation" content="Constant time complexity - always takes the same time regardless of array size">O(1)</Tooltip> access! But insert in the middle? You need to shift all following elements - imagine reorganizing an entire bookshelf because you want to insert one in the middle.
+
+### Non-contiguous memory
+
+Elements scattered in different memory regions, connected by pointers. Like a treasure hunt where each clue points to the next.
+
+<MemoryVisualization
+  title="RAM Memory (scattered):"
+  type="linked"
+  blocks={[
+    { address: '0x1000', value: 'data: 10', nextAddress: '0x5FA0' },
+    { address: '0x5FA0', value: 'data: 20', nextAddress: '0x2C10' },
+    { address: '0x2C10', value: 'data: 30', nextAddress: 'NULL' },
+  ]}
+>
+  <span className="text-danger">Linked List:</span>{' '}
+  <span className="text-success">10</span>{' '}
+  <span className="text-primary">→</span>{' '}
+  <span className="text-success">20</span>{' '}
+  <span className="text-primary">→</span>{' '}
+  <span className="text-success">30</span>
+</MemoryVisualization>
+
+Linked lists work this way. Each node carries its data and a pointer to the next. Insert in the middle? Easy - just redirect two pointers. But access element 100? You need to follow 100 clues sequentially - <Tooltip title="Big O notation" content="Linear time complexity - time grows proportionally with the number of elements">O(n)</Tooltip>.
+
+## What makes them different
+
+Each data structure makes tradeoffs:
+
+- **Memory layout** - Contiguous (arrays) vs scattered (linked lists)
+- **Access patterns** - Random access vs sequential traversal
+- **Operation costs** - Fast insertions but slow searches, or vice versa
+- **Space overhead** - Minimal metadata vs pointer-heavy structures
+
+The right choice depends on your specific use case. Need fast searches? Hash tables. Maintain order? Binary search trees. LIFO behavior? Stacks.

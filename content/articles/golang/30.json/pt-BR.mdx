@@ -1,0 +1,346 @@
+---
+title: JSON em Go
+description: Aprenda a fazer marshal e unmarshal de JSON em Go, controlar nomes de campos com struct tags, e transmitir JSON com eficiência usando Encoder e Decoder.
+slug: json
+publishedAt: '2026-04-28'
+keywords:
+  - golang
+  - json
+  - encoding/json
+  - marshal
+  - unmarshal
+  - struct tags
+  - json.Encoder
+  - json.Decoder
+---
+
+JSON é a língua franca das APIs modernas. Seja construindo um serviço HTTP, lendo um arquivo de configuração ou conversando com uma API de terceiros, você estará constantemente convertendo entre JSON e estruturas de dados Go. O package `encoding/json` lida com isso através de dois pares de operações complementares: marshalling e unmarshalling para trabalhar com byte slices, e encoding e decoding para trabalhar com streams.
+
+## Marshalling e unmarshalling
+
+**Marshalling** converte um valor Go em bytes JSON. **Unmarshalling** faz o inverso — converte bytes JSON em um valor Go.
+
+`json.Marshal` recebe qualquer valor Go e retorna um `[]byte` com a representação JSON:
+
+```go
+type User struct {
+    Name string
+    Age  int
+}
+
+u := User{Name: "Alice", Age: 30}
+
+data, err := json.Marshal(u)
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Println(string(data)) // {"Name":"Alice","Age":30}
+
+```
+
+`json.Unmarshal` recebe um byte slice JSON e um pointer para um valor Go, e preenche o valor com os dados parseados:
+
+```go
+raw := []byte(`{"Name":"Bob","Age":25}`)
+
+var u User
+if err := json.Unmarshal(raw, &u); err != nil {
+    log.Fatal(err)
+}
+
+fmt.Println(u.Name) // Bob
+fmt.Println(u.Age)  // 25
+
+```
+
+`json.Unmarshal` exige um pointer para que possa modificar o valor. Passar um não-pointer causa um error em runtime.
+
+Quando você precisa de output legível por humanos — em logs ou arquivos de configuração, por exemplo — `json.MarshalIndent` adiciona indentação:
+
+```go
+data, err := json.MarshalIndent(u, "", "  ")
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(string(data))
+// {
+//   "Name": "Alice",
+//   "Age": 30
+// }
+
+```
+
+## Struct tags
+
+O output do `json.Marshal` no exemplo acima usou `"Name"` e `"Age"` como chaves JSON — os mesmos nomes dos campos Go. Na prática, APIs JSON normalmente usam camelCase (`"userName"`) ou snake_case (`"user_name"`), não o PascalCase exportado do Go. As struct tags resolvem isso.
+
+Uma struct tag é uma string literal colocada após o tipo do campo, dentro de backticks. O package `encoding/json` lê a tag `json:"..."` para controlar como cada campo é tratado:
+
+```go
+type User struct {
+    Name  string `json:"name"`
+    Age   int    `json:"age"`
+    Email string `json:"email"`
+}
+
+u := User{Name: "Alice", Age: 30, Email: "alice@example.com"}
+data, _ := json.Marshal(u)
+
+fmt.Println(string(data))
+// {"name":"Alice","age":30,"email":"alice@example.com"}
+
+```
+
+A tag renomeia o campo no output JSON sem alterar o nome do campo Go. O unmarshalling respeita a mesma tag: `json.Unmarshal` mapeia `"name"` no JSON de volta para `Name` na struct.
+
+<Callout type="note" title="Campos não exportados são sempre ignorados">
+  `encoding/json` só consegue acessar campos exportados de structs (aqueles que
+  começam com letra maiúscula). Campos não exportados são silenciosamente
+  ignorados durante tanto o marshalling quanto o unmarshalling,
+  independentemente de haver uma tag presente.
+</Callout>
+
+## Opções comuns de tag
+
+Tags podem incluir opções após o nome do campo, separadas por vírgula.
+
+### omitempty
+
+A opção `omitempty` omite um campo do output JSON quando seu valor é o zero value para seu tipo — `0` para inteiros, `""` para strings, `false` para booleans, `nil` para pointers e slices:
+
+```go
+type Product struct {
+    Name     string   `json:"name"`
+    Price    float64  `json:"price"`
+    Discount float64  `json:"discount,omitempty"`
+    Tags     []string `json:"tags,omitempty"`
+}
+
+p := Product{Name: "Book", Price: 29.90}
+data, _ := json.Marshal(p)
+
+fmt.Println(string(data))
+// {"name":"Book","price":29.9}
+
+```
+
+`Discount` e `Tags` são omitidos porque estão com zero value. Isso mantém os payloads JSON concisos quando campos opcionais não estão definidos.
+
+<Callout type="warning" title="omitempty e zero values">
+  `omitempty` omite o campo quando ele é igual ao zero value, não quando é
+  semanticamente "vazio". Um `Price` de `0` seria omitido mesmo que zero seja um
+  valor significativo (um produto gratuito). Quando zero é um valor válido e
+  significativo, use um pointer — um nil pointer é omitido, mas um pointer para
+  zero é incluído.
+</Callout>
+
+### A tag `-`
+
+Usar `"-"` como nome da tag diz ao `encoding/json` para sempre ignorar aquele campo, tanto no marshalling quanto no unmarshalling:
+
+```go
+type User struct {
+    Name     string `json:"name"`
+    Password string `json:"-"`
+}
+
+u := User{Name: "Alice", Password: "secret"}
+data, _ := json.Marshal(u)
+
+fmt.Println(string(data))
+// {"name":"Alice"}
+
+```
+
+`Password` nunca aparece no output JSON e nunca é preenchido a partir de input JSON. Esta é a forma idiomática de excluir campos sensíveis da serialização.
+
+## Por que você deve preferir usar tags
+
+Sem tags, `encoding/json` usa o nome do campo Go como chave JSON. Isso só funciona bem se a API JSON com a qual você está interagindo usar PascalCase — o que é incomum. Na prática, depender do comportamento padrão leva a incompatibilidades:
+
+```go
+// Sem tags — o JSON precisa usar "Name", "CreatedAt", etc.
+type User struct {
+    Name      string
+    CreatedAt time.Time
+}
+
+// Com tags — você controla o formato JSON independentemente das convenções de nomenclatura Go
+type User struct {
+    Name      string    `json:"name"`
+    CreatedAt time.Time `json:"created_at"`
+}
+
+```
+
+Tags também tornam o contrato JSON explícito e visível no código. Um leitor não precisa adivinhar qual nome de campo o JSON usa — a tag o declara. Quando a API muda o nome do campo, a mudança na tag fica isolada em um único lugar.
+
+## Encoding e decoding com streams
+
+`json.Marshal` e `json.Unmarshal` trabalham com byte slices — leem ou produzem o payload JSON inteiro em memória de uma vez. Para payloads grandes ou quando os dados fluem por um [io.Reader ou io.Writer](/pt-BR/categorias/golang/artigos/io-reader-e-writer), isso é ineficiente. O package `encoding/json` oferece `json.Encoder` e `json.Decoder` para processamento JSON baseado em stream.
+
+`json.NewEncoder` envolve um `io.Writer` e escreve JSON diretamente nele:
+
+```go
+type User struct {
+    Name string `json:"name"`
+    Age  int    `json:"age"`
+}
+
+u := User{Name: "Alice", Age: 30}
+
+if err := json.NewEncoder(os.Stdout).Encode(u); err != nil {
+    log.Fatal(err)
+}
+// {"name":"Alice","age":30}
+
+```
+
+Isso é particularmente útil em HTTP handlers, onde `http.ResponseWriter` implementa `io.Writer`:
+
+```go
+func handleUser(w http.ResponseWriter, r *http.Request) {
+    u := User{Name: "Alice", Age: 30}
+    w.Header().Set("Content-Type", "application/json")
+    if err := json.NewEncoder(w).Encode(u); err != nil {
+        log.Println("encode error:", err)
+    }
+}
+
+```
+
+`json.NewDecoder` envolve um `io.Reader` e decodifica JSON a partir dele. Corpos de requisições HTTP implementam `io.Reader`, tornando `json.Decoder` a ferramenta natural para parsear JSON recebido:
+
+```go
+func handleCreate(w http.ResponseWriter, r *http.Request) {
+    var u User
+    if err := json.NewDecoder(r.Body).Decode(&u); err != nil {
+        http.Error(w, "invalid JSON", http.StatusBadRequest)
+        return
+    }
+    fmt.Printf("received: %+v\n", u)
+}
+
+```
+
+`Decode` lê apenas o suficiente do stream para preencher o valor alvo, deixando o restante do reader intacto. Isso importa quando você precisa ler múltiplos valores sequencialmente do mesmo stream — por exemplo, um arquivo de log JSON delimitado por newline:
+
+```go
+dec := json.NewDecoder(r)
+for {
+    var entry LogEntry
+    err := dec.Decode(&entry)
+    if err == io.EOF {
+        break
+    }
+    if err != nil {
+        log.Fatal(err)
+    }
+    process(entry)
+}
+
+```
+
+<Callout type="note" title="Encoder adiciona uma newline ao final">
+  `json.Encoder.Encode` acrescenta um caractere de newline após cada valor JSON.
+  Isso é intencional — produz JSON delimitado por newline, onde cada linha é um
+  documento JSON válido. Se você precisar dos bytes brutos sem a newline, use
+  `json.Marshal`.
+</Callout>
+
+## Marshalling e unmarshalling customizados
+
+Struct tags cobrem a maioria das necessidades de mapeamento JSON, mas às vezes o comportamento padrão não é suficiente. Pode ser que você precise serializar um tipo em um formato que `encoding/json` não consegue produzir sozinho — um `time.Duration` como string legível por humanos, uma bitmask como array de nomes, um valor que precisa mudar de forma dependendo de um campo. O package `encoding/json` oferece duas [interfaces](/pt-BR/categorias/golang/artigos/interfaces) para isso:
+
+```go
+type Marshaler interface {
+    MarshalJSON() ([]byte, error)
+}
+
+type Unmarshaler interface {
+    UnmarshalJSON([]byte) error
+}
+
+```
+
+Quando `json.Marshal` encontra um valor que implementa `Marshaler`, ele chama `MarshalJSON` e usa os bytes retornados diretamente. Quando `json.Unmarshal` encontra um valor que implementa `Unmarshaler`, ele chama `UnmarshalJSON` e passa os bytes JSON brutos do campo.
+
+### A interface Marshaler
+
+Considere `time.Duration`. Por padrão, Go a representa como um inteiro simples (nanosegundos), o que é correto, mas opaco em JSON:
+
+```go
+type Config struct {
+    Timeout time.Duration `json:"timeout"`
+}
+
+c := Config{Timeout: 5 * time.Second}
+data, _ := json.Marshal(c)
+fmt.Println(string(data)) // {"timeout":5000000000}
+
+```
+
+Um type customizado que envolve `time.Duration` e implementa `MarshalJSON` pode produzir uma string legível em vez disso:
+
+```go
+type Duration struct {
+    time.Duration
+}
+
+func (d Duration) MarshalJSON() ([]byte, error) {
+    return json.Marshal(d.String())
+}
+
+```
+
+`d.String()` retorna a string de duração do Go (`"5s"`, `"1m30s"`). Passá-la para `json.Marshal` produz uma string JSON entre aspas. O type de configuração atualizado agora faz marshal para algo significativo:
+
+```go
+type Config struct {
+    Timeout Duration `json:"timeout"`
+}
+
+c := Config{Timeout: Duration{5 * time.Second}}
+data, _ := json.Marshal(c)
+fmt.Println(string(data)) // {"timeout":"5s"}
+
+```
+
+### A interface Unmarshaler
+
+`UnmarshalJSON` recebe os bytes JSON brutos para o valor — incluindo aspas para strings, colchetes para arrays, e assim por diante — e é responsável por parseá-los no receiver. O método deve usar um pointer receiver para poder modificar o valor:
+
+```go
+func (d *Duration) UnmarshalJSON(data []byte) error {
+    var s string
+    if err := json.Unmarshal(data, &s); err != nil {
+        return err
+    }
+    dur, err := time.ParseDuration(s)
+    if err != nil {
+        return err
+    }
+    d.Duration = dur
+    return nil
+}
+
+```
+
+`UnmarshalJSON` primeiro parseia os bytes brutos como uma string JSON, depois a converte para `time.Duration` usando `time.ParseDuration`. O round-trip agora funciona corretamente nas duas direções:
+
+```go
+raw := []byte(`{"timeout":"1m30s"}`)
+
+var c Config
+json.Unmarshal(raw, &c)
+fmt.Println(c.Timeout.Duration) // 1m30s
+
+```
+
+<Callout type="note" title="UnmarshalJSON deve usar pointer receiver">
+  `UnmarshalJSON` modifica o valor no qual é chamado, então deve ser definido em
+  um pointer receiver (`*Duration`, não `Duration`). Um value receiver
+  modificaria uma cópia e a alteração seria perdida. `json.Unmarshal`
+  automaticamente pega o endereço do alvo ao buscar a interface `Unmarshaler`.
+</Callout>

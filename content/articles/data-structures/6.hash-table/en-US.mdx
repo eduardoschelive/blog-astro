@@ -1,0 +1,683 @@
+---
+title: Hash Tables
+description: Learn how hash tables achieve O(1) average lookups by mapping keys to array slots. Explore hash functions, collision resolution with chaining and open addressing, load factor, and rehashing.
+slug: hash-table
+publishedAt: '2026-03-17'
+keywords:
+  [
+    hash table,
+    hash function,
+    collision,
+    chaining,
+    open addressing,
+    linear probing,
+    load factor,
+    rehashing,
+    bucket,
+    dictionary,
+    map,
+    data structures,
+    C programming,
+  ]
+---
+
+## What is a hash table
+
+A **hash table** is a data structure that stores key-value pairs and lets you retrieve any value in <Tooltip title="Constant time (average)" content="O(1) — with a good hash function and low load factor, lookup costs the same regardless of how many entries are stored">O(1)</Tooltip> average time — regardless of how many entries it holds.
+
+The key-value pair model is familiar: think of a phonebook. You want Alice's number. You don't scan every name from A to Z — you flip to the right section and find her directly. A hash table does the same thing in software: instead of searching through every stored entry, it calculates exactly where to look.
+
+<Example title="The phonebook analogy">
+
+A phonebook with 10,000 entries. You want Alice's number.
+
+- Scanning every entry: O(n) — up to 10,000 comparisons
+- Flipping to "A" then scanning: still O(n), just a smaller fraction
+- A hash table: compute `hash("Alice") → slot 412`, go directly there — one lookup, done
+
+The hash function is what makes the difference. It turns the key into a precise location.
+
+</Example>
+
+A hash table is a concrete data structure that implements the **Map ADT** (also called Dictionary). The Map ADT defines the contract: store a value under a key, retrieve a value by key, delete a key. A hash table is one way to honor that contract. An ordered tree is another. A hash table wins on average-case speed but trades away ordering — more on that at the end.
+
+## The problem previous structures couldn't solve
+
+Every structure in this series so far gives you something but takes something away.
+
+[Arrays](/categories/data-structures/articles/arrays) offer O(1) access — but only by integer index. To look up a user by username, you'd need the exact position in the array. That's not useful. You'd have to store `users[0]`, `users[1]`, and then scan to find the right one, which is O(n).
+
+[Linked lists](/categories/data-structures/articles/linked-lists) are flexible but require traversal. Finding a node by value means walking the chain from the head — O(n) in the worst case.
+
+Neither structure can answer the question: _"What is Alice's phone number?"_ efficiently, because neither can map an arbitrary string key to a stored value in constant time.
+
+Hash tables solve this. They extend the O(1) random access that arrays provide for integer indices to work with any key type — strings, integers, composite objects — by computing the integer index from the key.
+
+## Hash functions
+
+A **hash function** takes a key and produces an integer index in the range `[0, m-1]`, where `m` is the number of buckets in the table. Two properties make a hash function useful:
+
+- **Determinism** — the same key always produces the same index
+- **Uniform distribution** — keys spread evenly across all buckets, so no single bucket gets overloaded
+
+Here is a simple, widely-used string hash function called djb2:
+
+```c
+unsigned int hash(const char *key, int table_size) {
+    unsigned long h = 5381;
+    int c;
+    while ((c = *key++))
+        h = ((h << 5) + h) + c;  /* h * 33 + c */
+    return h % table_size;
+}
+```
+
+With a table of 8 buckets, this maps our three keys like this:
+
+```
+hash("name", 8) → 3
+hash("age",  8) → 6
+hash("city", 8) → 1
+```
+
+<HashTableVisualization
+  title='After inserting "city"→"Paris", "name"→42, "age"→30:'
+  buckets={[
+    {},
+    { entries: [{ key: 'city', value: '"Paris"' }] },
+    {},
+    { entries: [{ key: 'name', value: 42 }] },
+    {},
+    {},
+    { entries: [{ key: 'age', value: 30 }] },
+    {},
+  ]}
+>
+  Three keys map to three different slots — direct access, no scanning
+</HashTableVisualization>
+
+To look up `"name"`, the table hashes the key to slot 3 and reads directly from there. No comparisons against other entries. No traversal.
+
+## What can be used as a key
+
+A hash function must satisfy **determinism** — the same key must always produce the same hash. This has a direct implication for what types are valid as keys: **the key must be immutable, or at least stable for its entire lifetime in the table.**
+
+If you insert a key, then mutate it, its hash changes — but the entry was placed in the bucket corresponding to the old hash. Lookups for the new key hash to a different bucket and find nothing; the entry becomes permanently unreachable without being explicitly deleted.
+
+Most languages enforce this constraint either statically or at runtime:
+
+**Python** requires keys to implement `__hash__` and raises `TypeError` at insertion time if they don't. Immutable built-in types — `str`, `int`, `float`, `tuple` (of hashables), `frozenset` — work. Mutable types — `list`, `dict`, `set` — are unhashable by design:
+
+```python
+d = {}
+d["name"] = "Alice"    # ✓ str is immutable
+d[(1, 2)] = "point"    # ✓ tuple of ints is immutable
+d[[1, 2]] = "point"    # ✗ TypeError: unhashable type: 'list'
+```
+
+**Java** allows any `Object` as a key — all objects have a `hashCode()` method. But using a mutable object is a silent footgun the language won't prevent:
+
+```java
+List<String> key = new ArrayList<>(List.of("a", "b"));
+map.put(key, 42);   // inserted at hash of ["a", "b"]
+key.add("c");       // mutated — hash changes silently
+map.get(key);       // returns null — entry is unreachable
+```
+
+**JavaScript's `Map`** accepts any value as a key — including objects — but uses **reference identity**, not content. Two distinct objects with the same fields hash differently:
+
+```javascript
+const map = new Map()
+const key = { x: 1 }
+map.set(key, 'value')
+map.get({ x: 1 }) // undefined — different object reference
+map.get(key) // "value" — same reference
+```
+
+**C++'s `std::unordered_map`** requires a `std::hash<K>` specialization. Primitive types and `std::string` are supported out of the box; custom types must provide one explicitly, which forces you to define what constitutes the key's identity.
+
+**Rust** enforces this at compile time: key types must implement both `Hash` and `Eq`. The standard library does not implement `Hash` for types with mutable interior state — the constraint is structural, not advisory.
+
+The practical rule: **use immutable values as keys.** Strings and integers are safe everywhere. If you must use a composite or custom type, ensure the fields that feed into the hash never change after insertion.
+
+## Collisions are inevitable
+
+Here is the problem: a table with 8 buckets can only hold 8 distinct slot assignments. Add a 9th key and at least two keys must share a slot. But even before that, random distribution doesn't guarantee uniqueness:
+
+```
+hash("name", 8) → 3
+hash("make", 8) → 3   ← collision — same slot as "name"
+```
+
+This is not a flaw. It is a mathematical certainty. Any hash function that maps an unbounded set of keys into a bounded range will eventually produce the same index for two different keys. The question is not whether collisions happen, but how to handle them when they do.
+
+Two strategies dominate: **chaining** and **open addressing**.
+
+## Collision resolution: chaining
+
+In chaining, each bucket holds a linked list of entries. When two keys hash to the same slot, their entries both live in the list at that bucket. Lookup must scan the list to find the right key.
+
+```c
+#define TABLE_SIZE 8
+
+struct Entry {
+    char         *key;
+    int           value;
+    struct Entry *next;
+};
+
+struct HashTable {
+    struct Entry *buckets[TABLE_SIZE];
+};
+
+void ht_init(struct HashTable *ht) {
+    for (int i = 0; i < TABLE_SIZE; i++)
+        ht->buckets[i] = NULL;
+}
+
+unsigned int hash(const char *key) {
+    unsigned long h = 5381;
+    int c;
+    while ((c = *key++))
+        h = ((h << 5) + h) + c;
+    return h % TABLE_SIZE;
+}
+```
+
+<Callout type="info">
+  Each `Entry` is allocated individually on the **heap** via `malloc`. The
+  `HashTable` struct itself can sit on the stack for fixed-size implementations
+  like this one, but real hash tables that support dynamic resizing must also be
+  heap-allocated — the rehash operation allocates an entirely new backing array,
+  then frees the old one.
+</Callout>
+
+```c
+void ht_insert(struct HashTable *ht, const char *key, int value) {
+    unsigned int idx = hash(key);
+    /* Key already exists — update in place */
+    struct Entry *curr = ht->buckets[idx];
+    while (curr) {
+        if (strcmp(curr->key, key) == 0) {
+            curr->value = value;
+            return;
+        }
+        curr = curr->next;
+    }
+    /* New key — prepend to chain */
+    struct Entry *entry = malloc(sizeof(struct Entry));
+    entry->key   = strdup(key);
+    entry->value = value;
+    entry->next  = ht->buckets[idx];
+    ht->buckets[idx] = entry;
+}
+
+int ht_lookup(struct HashTable *ht, const char *key, int *out) {
+    unsigned int idx = hash(key);
+    struct Entry *curr = ht->buckets[idx];
+    while (curr) {
+        if (strcmp(curr->key, key) == 0) {
+            *out = curr->value;
+            return 1;  /* found */
+        }
+        curr = curr->next;
+    }
+    return 0;  /* not found */
+}
+
+void ht_delete(struct HashTable *ht, const char *key) {
+    unsigned int idx = hash(key);
+    struct Entry *curr = ht->buckets[idx];
+    struct Entry *prev = NULL;
+    while (curr) {
+        if (strcmp(curr->key, key) == 0) {
+            if (prev) prev->next = curr->next;
+            else      ht->buckets[idx] = curr->next;
+            free(curr->key);
+            free(curr);
+            return;
+        }
+        prev = curr;
+        curr = curr->next;
+    }
+}
+```
+
+When `"make"` hashes to slot 3 — already occupied by `"name"` — it is prepended to the chain:
+
+<HashTableVisualization
+  title='insert("make", 17) — collision at slot 3:'
+  hashKey="make"
+  hashSlot={3}
+  buckets={[
+    {},
+    { entries: [{ key: 'city', value: '"Paris"' }] },
+    {},
+    {
+      entries: [
+        { key: 'make', value: 17 },
+        { key: 'name', value: 42 },
+      ],
+      highlighted: true,
+    },
+    {},
+    {},
+    { entries: [{ key: 'age', value: 30 }] },
+    {},
+  ]}
+>
+  Both "make" and "name" live at slot 3 — linked together in a chain
+</HashTableVisualization>
+
+Looking up `"name"` now means: hash to slot 3, walk the chain comparing keys until a match is found. With a good hash function and a low load factor, chains stay short — usually one or two entries.
+
+<Callout type="info">
+  Chaining is the model used by Java's `HashMap` and historically by Python's
+  `dict`. The linked list approach handles arbitrarily high load, but each chain
+  node is a separately allocated block, scattered through heap memory. Heavy
+  chains cause **cache misses** on every step — the opposite of the sequential
+  access that makes arrays fast.
+</Callout>
+
+**Chaining — operation costs:**
+
+| Operation | Average | Worst case | Why                                                                     |
+| --------- | ------- | ---------- | ----------------------------------------------------------------------- |
+| insert    | O(1)    | O(n)       | Hash key, prepend to chain; worst if all n keys land in the same bucket |
+| lookup    | O(1)    | O(n)       | Hash key, scan chain for match; worst if all n keys share a bucket      |
+| delete    | O(1)    | O(n)       | Hash key, unlink node from chain; worst if all n keys share a bucket    |
+
+## Collision resolution: open addressing
+
+Open addressing stores everything in the flat array itself — no linked lists, no separate allocations. When a collision occurs, the table **probes** for the next empty slot.
+
+The simplest strategy is **linear probing**: if slot `i` is taken, try `i+1`, then `i+2`, wrapping around with modulo.
+
+```c
+#define TABLE_SIZE 8
+#define DELETED    ((char *)-1)  /* tombstone sentinel */
+
+struct Slot {
+    char *key;
+    int   value;
+};
+
+struct HashTable {
+    struct Slot slots[TABLE_SIZE];
+};
+
+void ht_init(struct HashTable *ht) {
+    for (int i = 0; i < TABLE_SIZE; i++)
+        ht->slots[i].key = NULL;
+}
+
+void ht_insert(struct HashTable *ht, const char *key, int value) {
+    unsigned int idx = hash(key) % TABLE_SIZE;
+    for (int i = 0; i < TABLE_SIZE; i++) {
+        unsigned int probe = (idx + i) % TABLE_SIZE;
+        char *k = ht->slots[probe].key;
+        if (k == NULL || k == DELETED) {
+            ht->slots[probe].key   = strdup(key);
+            ht->slots[probe].value = value;
+            return;
+        }
+        if (strcmp(k, key) == 0) {
+            ht->slots[probe].value = value;  /* update */
+            return;
+        }
+    }
+    /* table is full */
+}
+
+int ht_lookup(struct HashTable *ht, const char *key, int *out) {
+    unsigned int idx = hash(key) % TABLE_SIZE;
+    for (int i = 0; i < TABLE_SIZE; i++) {
+        unsigned int probe = (idx + i) % TABLE_SIZE;
+        char *k = ht->slots[probe].key;
+        if (k == NULL) return 0;           /* empty slot — key not in table */
+        if (k != DELETED && strcmp(k, key) == 0) {
+            *out = ht->slots[probe].value;
+            return 1;
+        }
+    }
+    return 0;
+}
+```
+
+Deletion requires care. Suppose `"make"` collided at slot 3 (already occupied by `"name"`) and linear probing placed it at slot 4. After deleting `"name"`, the naive approach — set `slots[3].key = NULL` — silently breaks lookups for any key that was displaced past that slot. A subsequent lookup for `"make"` hashes to 3, sees an empty slot, and treats that as "not found" — even though `"make"` is right there at slot 4.
+
+The fix: instead of clearing the slot, mark it with a **tombstone** sentinel. Lookups skip tombstones and keep probing; insertions may reuse them.
+
+<HashTableCompare
+  leftTitle="❌ Naive removal (slots[3] = NULL)"
+  rightTitle="✓ Tombstone (slots[3] = DELETED)"
+  leftBuckets={[
+    {},
+    { entries: [{ key: 'city', value: '"Paris"' }] },
+    {},
+    {},
+    { entries: [{ key: 'make', value: 17 }] },
+    {},
+    { entries: [{ key: 'age', value: 30 }] },
+    {},
+  ]}
+  leftProbeSteps={[{ slot: 3, outcome: 'stop' }]}
+  rightBuckets={[
+    {},
+    { entries: [{ key: 'city', value: '"Paris"' }] },
+    {},
+    { tombstone: true },
+    { entries: [{ key: 'make', value: 17 }] },
+    {},
+    { entries: [{ key: 'age', value: 30 }] },
+    {},
+  ]}
+  rightProbeSteps={[
+    { slot: 3, outcome: 'skip' },
+    { slot: 4, outcome: 'found' },
+  ]}
+>
+  lookup("make"): left stops at the empty slot and returns not-found — right
+  skips the tombstone and finds it
+</HashTableCompare>
+
+```c
+void ht_delete(struct HashTable *ht, const char *key) {
+    unsigned int idx = hash(key) % TABLE_SIZE;
+    for (int i = 0; i < TABLE_SIZE; i++) {
+        unsigned int probe = (idx + i) % TABLE_SIZE;
+        char *k = ht->slots[probe].key;
+        if (k == NULL) return;  /* key not in table */
+        if (k != DELETED && strcmp(k, key) == 0) {
+            free(ht->slots[probe].key);
+            ht->slots[probe].key = DELETED;  /* tombstone */
+            return;
+        }
+    }
+}
+```
+
+<Callout type="info">
+  **Tombstone accumulation.** Tombstones count as occupied slots for load factor
+  purposes — a table with many deletions degrades even if few live entries
+  remain. Two mechanisms keep this in check: insertions recycle the first
+  tombstone slot encountered on the probe path (so a tombstone is replaced
+  rather than added); and rehashing discards all tombstones entirely, since
+  re-inserting live entries into a fresh table never produces them.
+</Callout>
+
+**Alternative: backward shift deletion.** The tombstone approach is lazy — it defers cleanup. The alternative is to immediately repair the probe chain so that no sentinel is needed at all. This is called **backward shift deletion**: after clearing the deleted slot, the algorithm walks forward and pulls back any displaced key that would become unreachable.
+
+A key at position `j` is "displaced" — placed there by probing past its natural home slot — if its home falls at or before the hole. Moving it back one step closes the gap without breaking any probe chain.
+
+```c
+void ht_delete(struct HashTable *ht, const char *key) {
+    unsigned int idx = hash(key) % TABLE_SIZE;
+    int hole = -1;
+    for (int i = 0; i < TABLE_SIZE; i++) {
+        unsigned int probe = (idx + i) % TABLE_SIZE;
+        if (ht->slots[probe].key == NULL) return;   /* not found */
+        if (strcmp(ht->slots[probe].key, key) == 0) {
+            free(ht->slots[probe].key);
+            ht->slots[probe].key = NULL;
+            hole = probe;
+            break;
+        }
+    }
+    if (hole == -1) return;
+
+    /* Shift displaced keys back into the hole */
+    for (;;) {
+        unsigned int j    = (hole + 1) % TABLE_SIZE;
+        unsigned int home = hash(ht->slots[j].key) % TABLE_SIZE;
+
+        /* Stop at an empty slot — the chain ends here */
+        if (ht->slots[j].key == NULL) break;
+
+        /* Check whether the key at j was displaced past the hole.
+           If home is NOT strictly between hole and j (cyclically),
+           the key needs the hole to stay reachable — pull it back. */
+        int displaced = (home <= (unsigned int)hole)
+                      || (home > (unsigned int)j && j < (unsigned int)hole);
+        if (!displaced) { hole = j; continue; }
+
+        ht->slots[hole] = ht->slots[j];
+        ht->slots[j].key = NULL;
+        hole = j;
+    }
+}
+```
+
+This keeps lookups clean — no tombstone slots to skip — but makes deletion more complex and slightly slower. The table in the Robin Hood hashing row of the comparison below mentions this interaction: deletion-heavy workloads make tombstone logic expensive, and backward shift is the escape hatch.
+
+| Approach       | Deletion cost | Lookup after deletion              | Tombstone buildup           |
+| -------------- | ------------- | ---------------------------------- | --------------------------- |
+| Tombstone      | O(1)          | Skips tombstones (slightly slower) | Yes — needs periodic rehash |
+| Backward shift | O(n) worst    | No overhead                        | No                          |
+
+For most workloads dominated by lookups and inserts with occasional deletes, tombstones win on simplicity. For deletion-heavy workloads where clean lookup performance matters, backward shift is worth the extra deletion cost.
+
+<Callout type="warning">
+  **Clustering** is the main weakness of linear probing. When many keys hash
+  near each other, they form long runs of occupied slots. Each new collision
+  extends the run, making future probes longer. This is why open addressing
+  tables must keep the load factor low — typically below **0.7** — while
+  chaining tables tolerate higher loads without clustering.
+</Callout>
+
+Linear probing is the simplest open addressing strategy, but not the only one. The three strategies differ in how they compute the next slot to try after a collision.
+
+**Linear probing** advances by a fixed step of 1 on every collision:
+
+```
+probe(i) = (h(key) + i) % m
+```
+
+```
+Table size m=11, h(key)=3:
+  i=0 → 3
+  i=1 → 4
+  i=2 → 5
+  i=3 → 6   ← consecutive run; primary clustering grows here
+```
+
+The sequential probe pattern is cache-friendly — all candidates are adjacent in memory — but causes **primary clustering**: occupied slots merge into long runs that make future insertions slower.
+
+---
+
+**Quadratic probing** advances by `i²` on the i-th collision:
+
+```
+probe(i) = (h(key) + i²) % m
+```
+
+```
+Table size m=11, h(key)=3:
+  i=0 → 3
+  i=1 → 4  (3 + 1)
+  i=2 → 7  (3 + 4)
+  i=3 → 1  (3 + 9) % 11
+  i=4 → 8  (3 + 16) % 11   ← scattered; no long consecutive run
+```
+
+The scattered pattern breaks primary clustering. But two keys that hash to the same initial slot still follow the same probe sequence — **secondary clustering**. For quadratic probing to visit all m slots (guaranteeing insertion never fails on a non-full table), m must be prime and α must stay below 0.5.
+
+---
+
+**Double hashing** computes the step from a second hash function:
+
+```
+probe(i) = (h1(key) + i × h2(key)) % m
+```
+
+```
+Table size m=11, h1(key)=3, h2(key)=4:
+  i=0 →  3  (3 + 0×4)
+  i=1 →  7  (3 + 1×4)
+  i=2 →  0  (3 + 2×4) % 11
+  i=3 →  4  (3 + 3×4) % 11   ← different step per key; no shared sequence
+```
+
+Two keys that collide at the same initial slot diverge after the first probe because they have different `h2` values. This eliminates both primary and secondary clustering, giving the best distribution of the three. The cost: two hash computations per probe. The second function must never return 0 (a zero step locks the probe in place) — the standard formula `h2(key) = p - (h1(key) % p)` for a small prime `p` guarantees this:
+
+```c
+unsigned int h2(const char *key, int p) {
+    return p - (djb2(key) % p);  /* p is a small prime, e.g. 7 */
+}
+
+unsigned int probe_slot(const char *key, int i, int m, int p) {
+    return (h1(key) + i * h2(key, p)) % m;
+}
+```
+
+---
+
+**Robin Hood hashing** is not a separate probe formula but a refinement on top of linear probing. During insertion, if the candidate slot is occupied by a key whose probe length (distance from its home slot) is shorter than the key being inserted, they swap — the displaced key continues probing from that point. This "steal from the rich, give to the poor" policy equalizes probe lengths across the table, reducing variance. Rust's `HashMap` used Robin Hood hashing until switching to Swiss Tables (a SIMD-accelerated flat layout) in 2021.
+
+---
+
+**When to choose each:**
+
+| Strategy          | Use when                                                      | Avoid when                                                  |
+| ----------------- | ------------------------------------------------------------- | ----------------------------------------------------------- |
+| Linear probing    | Cache performance is the priority; α stays below 0.5          | Heavy load or adversarial key distributions                 |
+| Quadratic probing | You want less clustering with minimal complexity; m is prime  | α approaches 0.5; non-prime table sizes                     |
+| Double hashing    | Distribution quality matters most; higher load factors needed | Two hash computations per probe are too expensive           |
+| Robin Hood        | You want linear-probing cache benefits with lower variance    | Deletion-heavy workloads (tombstone logic interacts poorly) |
+
+**Open addressing — operation costs:**
+
+| Operation | Average | Worst case | Why                                                                               |
+| --------- | ------- | ---------- | --------------------------------------------------------------------------------- |
+| insert    | O(1)    | O(n)       | Hash key, probe a few slots; worst under severe clustering or a nearly full table |
+| lookup    | O(1)    | O(n)       | Hash key, probe until key or empty slot found; worst under severe clustering      |
+| delete    | O(1)    | O(n)       | Probe to locate key, place tombstone; same probe cost as lookup                   |
+
+**Chaining vs. open addressing at a glance:**
+
+|                           | Chaining                 | Open addressing (linear probing) |
+| ------------------------- | ------------------------ | -------------------------------- |
+| Memory layout             | Linked nodes (scattered) | Flat array (contiguous)          |
+| Cache performance         | Poor — pointer chasing   | Good — sequential memory         |
+| Max load factor           | Any (just slower)        | Must stay below ~0.7             |
+| Delete                    | Relink chain             | Tombstone required               |
+| Implementation complexity | More pointer bookkeeping | Simpler array arithmetic         |
+
+## Load factor and rehashing
+
+The **load factor** α = n/m, where n is the number of stored entries and m is the number of buckets. As α rises, performance degrades: chains grow longer (chaining) or clustering worsens (open addressing). Both erode the O(1) average toward O(n).
+
+When α exceeds a threshold — typically **0.75** — the table must grow. This is called **rehashing**:
+
+1. Allocate a new, larger array (typically 2× the bucket count)
+2. Re-hash every existing entry and insert it into the new table
+3. Free the old table
+
+```c
+/* Conceptual rehash — doubles table size and re-inserts all entries */
+void rehash(struct HashTable *old_ht, struct HashTable *new_ht) {
+    ht_init(new_ht);  /* new_ht->buckets has 2x the slots */
+    for (int i = 0; i < OLD_SIZE; i++) {
+        struct Entry *curr = old_ht->buckets[i];
+        while (curr) {
+            ht_insert(new_ht, curr->key, curr->value);
+            curr = curr->next;
+        }
+    }
+}
+```
+
+<Callout type="info">
+  Rehashing is amortized{' '}
+  <Tooltip
+    title="Constant time (amortized)"
+    content="O(1) amortized — the O(n) rehash cost is paid once every n insertions, so the average cost per insert remains constant"
+  >
+    O(1)
+  </Tooltip>
+  . The reasoning is identical to dynamic array doubling from the [Arrays
+  article](/categories/data-structures/articles/arrays): after a rehash doubles
+  the table, you must insert n more entries before the next rehash. The O(n)
+  cost is spread across n operations — constant per operation.
+</Callout>
+
+## Common operations and their costs
+
+| Operation           | Average                                                                                                                         | Worst case                                                                                                                                         | Why                                                |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| insert              | <Tooltip title="Constant time (average)" content="O(1) — hash the key, prepend to chain or probe for empty slot">O(1)</Tooltip> | <Tooltip title="Linear time (worst case)" content="O(n) — if all n keys hash to the same bucket, insert must walk the entire chain">O(n)</Tooltip> | Hash then place; worst if all keys collide         |
+| lookup              | <Tooltip title="Constant time (average)" content="O(1) — hash the key, scan the (short) chain at that bucket">O(1)</Tooltip>    | <Tooltip title="Linear time (worst case)" content="O(n) — if all n keys hash to the same bucket, lookup must scan the entire chain">O(n)</Tooltip> | Hash then scan chain; worst if all keys collide    |
+| delete              | <Tooltip title="Constant time (average)" content="O(1) — hash the key, unlink from chain or place tombstone">O(1)</Tooltip>     | <Tooltip title="Linear time (worst case)" content="O(n) — if all n keys hash to the same bucket, delete must walk the entire chain">O(n)</Tooltip> | Hash then unlink; worst if all keys collide        |
+| rehash              | —                                                                                                                               | O(n)                                                                                                                                               | Re-insert all n entries; amortized O(1) per insert |
+| Iterate all entries | O(n + m)                                                                                                                        | O(n + m)                                                                                                                                           | Must scan all m buckets even if most are empty     |
+
+The worst case is not merely theoretical. It can be triggered deliberately: an attacker who knows the hash function can craft keys that all hash to the same slot, turning every lookup into a linear scan. This is called a **hash flooding** attack and has been used against web servers. Modern hash table implementations defend against it with **randomized seeds** — a per-process or per-table salt added to the hash computation, so the attacker cannot predict which keys will collide. Rust's `HashMap` uses SipHash by default for this reason.
+
+## Hash tables in the real world
+
+### Language runtimes
+
+Python dictionaries and JavaScript objects are hash tables. Every expression like `obj["username"]` or `obj.username` goes through a hash function at runtime. The variable lookup table of every running Python script is a `dict` — local variable names are keys, their values are the dict values. V8 (the JavaScript engine) uses a combination of inline object shape caches and hash tables depending on the object's history and the number of properties it holds.
+
+### Database hash indexes
+
+Relational databases offer hash indexes alongside the more common B-tree index. In PostgreSQL: `CREATE INDEX ON users USING hash (email)`. A hash index is significantly faster for equality lookups (`WHERE email = 'alice@example.com'`) because it computes the index position directly. It is completely useless for range queries (`WHERE created_at BETWEEN ... AND ...`) because hashing destroys all ordering information. Most databases default to B-tree precisely because range queries are common; hash indexes are a specialized optimization for pure equality workloads.
+
+### Caches and content deduplication
+
+Content-addressable storage systems use cryptographic hashes as keys. Git stores every file and commit object under its SHA-1 hash. Two files with identical content produce the same hash — so checking "have I already stored this content?" is a hash table lookup: O(1), no matter how many objects are stored. Backup deduplication software works the same way: hash each block of data, look it up in a hash table of already-seen blocks, skip if found.
+
+### Compiler symbol tables
+
+Every compiler maintains a symbol table: a mapping from identifier names (strings) to their declarations, types, and memory addresses. During compilation, every variable reference (`x = y + 1`) involves two hash table lookups — one for `x` and one for `y`. The hash table is chosen over a sorted structure because identifier names are not naturally sorted, the load is dominated by repeated lookups of a stable key set, and the hash table's O(1) average dominates on this workload.
+
+### Set data structures
+
+A mathematical set — a collection with no duplicates where membership testing is the primary operation — is implemented as a hash table where values are discarded and only keys are stored. Python's `set`, Java's `HashSet`, and C++'s `unordered_set` are hash tables with empty values. The expression `if x in seen:` in Python is a hash table lookup, not a linear scan.
+
+### Pseudo-random number generation
+
+A hash function that distributes its outputs uniformly across a range is, structurally, a pseudo-random number generator. Feed it a counter and you get a deterministic sequence that looks random:
+
+```c
+/* Integer finalizer — maps any uint32 to a uniform-looking uint32 */
+uint32_t hash_u32(uint32_t x) {
+    x = ((x >> 16) ^ x) * 0x45d9f3b;
+    x = ((x >> 16) ^ x) * 0x45d9f3b;
+    x =  (x >> 16) ^ x;
+    return x;
+}
+
+/* Stateless: retrieve the nth value without computing all previous ones */
+float random_at(uint32_t seed, uint32_t n) {
+    return hash_u32(seed ^ n) / (float)0xFFFFFFFFu;
+}
+```
+
+Unlike a sequential PRNG — which holds state and must be advanced one step at a time — a hash-based generator is **stateless and parallelizable**. You can jump directly to any index in the sequence: `random_at(seed, 1000000)` costs exactly as much as `random_at(seed, 0)`.
+
+This matters for **procedural generation**. To assign a random elevation to terrain chunk `(x, y)`, compute `hash(seed ^ x ^ (y * large_prime))` — no shared state, no ordering constraint, identical results across machines and threads for the same seed. The same principle underlies Perlin and Simplex noise functions, which hash grid-point coordinates to produce smooth random fields. Shader code, game world generation, and deterministic simulation all rely on this pattern for exactly the same reason: indexed, parallel access to any point in a random sequence with zero coordination overhead.
+
+## When hash tables fall short
+
+**No ordering.** Hash tables store entries in essentially random bucket positions — the hash function makes no attempt to preserve any relationship between keys. You cannot iterate all keys in sorted order, and you cannot answer range queries like "all keys between 'apple' and 'banana'". For ordered access, use a balanced BST (`std::map` in C++, `TreeMap` in Java), which gives O(log n) operations with full range-query support.
+
+**Poor cache performance under chaining.** Chaining's linked list nodes are allocated individually on the heap, scattered through memory. Under high load, traversing a long chain causes a cache miss on every step. Open addressing avoids this with contiguous storage, but it introduces clustering and tombstone accumulation over time.
+
+**Worst-case O(n) under adversarial input.** Without a randomized seed, a known hash function can be exploited to produce pathological inputs that degrade every operation to O(n). This is not hypothetical — hash flooding attacks against web frameworks have been documented. Always use a hash function with a random salt in security-sensitive contexts.
+
+**Memory overhead from empty buckets.** A hash table always maintains excess capacity to keep the load factor low. A table with 100 entries at α = 0.5 allocates 200 buckets — half of them empty. For very small key sets, a sorted array with binary search may use less total memory and be faster in practice due to cache behavior.
+
+**Rehashing pauses.** Each rehash is an O(n) synchronous operation. In most implementations it happens at insertion time, without warning. For latency-sensitive systems — real-time audio processing, high-frequency trading — an unpredictable O(n) pause is unacceptable. Redis addresses this with **incremental rehashing**: it maintains two tables simultaneously during a resize and migrates a few entries on each operation, spreading the cost across many insertions rather than paying it all at once.
+
+## Summary
+
+Hash tables are the fastest general-purpose lookup structure for arbitrary key types:
+
+- **O(1) average insert, lookup, and delete** — achieved by mapping keys to array indices via a hash function
+- **Collisions are inevitable and designed-in** — resolved by chaining (linked list per bucket) or open addressing (linear probing into adjacent slots)
+- **Load factor α = n/m** — keep it below 0.75; exceeding the threshold triggers rehashing
+- **Rehashing is amortized O(1)** — the O(n) cost is paid once every n insertions, identical in structure to dynamic array doubling
+- **The price is ordering** — hash tables are blind to key relationships; use a tree-based map when sorted access or range queries matter
+
+Hash tables appear invisibly in code written every day: Python `dict`, JavaScript objects, database row caches, compiler variable environments, deduplication systems. Understanding how collision resolution, load factor, and rehashing interact is what separates using a hash table from understanding one — and understanding one is what lets you choose it deliberately, and recognize the rare cases where something else fits better.

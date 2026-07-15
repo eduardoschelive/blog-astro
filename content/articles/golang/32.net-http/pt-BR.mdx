@@ -1,0 +1,334 @@
+---
+title: HTTP em Go
+description: Aprenda a construir clients e servers HTTP em Go com o pacote net/http, fazendo requests, usando handlers e roteando com ServeMux e path wildcards.
+slug: net-http
+publishedAt: '2026-04-29'
+keywords:
+  - golang
+  - net/http
+  - http client
+  - http server
+  - ServeMux
+  - http.Handler
+  - http.Request
+  - http.ResponseWriter
+---
+
+HTTP é o protocolo que move a web. Toda chamada de API, toda requisição de browser, todo webhook — tudo passa por HTTP. O pacote `net/http` da biblioteca padrão do Go é a resposta da linguagem para trabalhar com esse protocolo, oferecendo tudo que você precisa para atuar como client (enviando requests para outros servidores) e como server (recebendo e respondendo requests de clientes).
+
+## Fundamentos do HTTP
+
+HTTP (Hypertext Transfer Protocol) opera na camada 7 do modelo OSI — a camada de aplicação. Ele fica sobre protocolos de transporte como o TCP, que cuidam da confiabilidade e da ordenação dos bytes. O papel do HTTP é mais restrito: ele define a semântica das requests e responses.
+
+O modelo é simples. Um client envia uma request especificando um method (`GET`, `POST`, `PUT`, `DELETE`) e uma URL. O server responde com um status code e um body opcional. Ambos os lados podem anexar headers para carregar metadados sobre a mensagem — tipo do conteúdo, tokens de autenticação, diretivas de cache, entre outros.
+
+## O HTTP client
+
+### Evite o default client
+
+O pacote `net/http` exporta um `DefaultClient` e um conjunto de funções de conveniência — `http.Get`, `http.Post`, `http.PostForm` — que delegam para ele:
+
+```go
+resp, err := http.Get("https://api.example.com/users")
+resp, err := http.Post("https://api.example.com/users", "application/json", body)
+
+```
+
+O problema é que `http.DefaultClient` não tem timeout configurado. Um server que demora para responder — ou que nunca responde — fará sua goroutine travar indefinidamente. Em qualquer aplicação real, isso é um vazamento de recursos que pode esgotar o pool de goroutines.
+
+<Callout type="warning" title="Nunca use o default client em produção">
+  `http.DefaultClient`, `http.Get`, `http.Post` e funções similares não têm
+  timeout. Um server travado vai bloquear sua goroutine para sempre. Sempre crie
+  um `http.Client` com um `Timeout` explícito.
+</Callout>
+
+### Criando um client com timeout
+
+`http.Client` é uma struct. O campo mais importante para a correção do código é `Timeout`:
+
+```go
+client := &http.Client{
+    Timeout: 10 * time.Second,
+}
+
+```
+
+O timeout cobre todo o ciclo de vida da request: resolução de DNS, conexão TCP, envio dos headers e do body, leitura dos headers da response e leitura do body da response. Se o tempo total ultrapassar `Timeout`, a request é cancelada e `client.Do` retorna um error.
+
+### Fazendo requests
+
+Para um GET simples, use o método direto do client:
+
+```go
+resp, err := client.Get("https://api.example.com/users")
+if err != nil {
+    log.Fatal(err)
+}
+defer resp.Body.Close()
+
+```
+
+Para algo mais complexo — headers customizados, um method específico, um body — construa a request com `http.NewRequest` e execute com `client.Do`:
+
+```go
+req, err := http.NewRequest(http.MethodPost, "https://api.example.com/users", body)
+if err != nil {
+    log.Fatal(err)
+}
+req.Header.Set("Content-Type", "application/json")
+req.Header.Set("Authorization", "Bearer "+token)
+
+resp, err := client.Do(req)
+if err != nil {
+    log.Fatal(err)
+}
+defer resp.Body.Close()
+
+```
+
+`http.NewRequest` recebe um method string, uma URL e um `io.Reader` opcional para o body. Ele retorna um `*http.Request` que você pode anotar livremente com headers, query parameters ou context antes de passar para `client.Do`.
+
+### Lendo o body da response
+
+`resp.Body` é um `io.ReadCloser`. Você deve sempre fechá-lo — mesmo que não pretenda ler nada — para devolver a conexão TCP subjacente ao pool do client:
+
+```go
+defer resp.Body.Close()
+
+data, err := io.ReadAll(resp.Body)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(string(data))
+
+```
+
+### Verificando o status code
+
+Uma response de erro HTTP (404, 500, etc.) não gera um error do Go retornado por `client.Do`. O `error` retornado representa apenas falhas de transporte: falha de DNS, connection refused, timeout, erros de TLS. O status code HTTP deve ser verificado separadamente:
+
+```go
+if resp.StatusCode != http.StatusOK {
+    log.Fatalf("status inesperado: %s", resp.Status)
+}
+
+```
+
+O pacote `net/http` define constantes para todos os status codes padrão: `http.StatusOK` (200), `http.StatusCreated` (201), `http.StatusBadRequest` (400), `http.StatusNotFound` (404), `http.StatusInternalServerError` (500), entre muitos outros.
+
+## O HTTP server
+
+### ListenAndServe
+
+`http.ListenAndServe` inicia um HTTP server e bloqueia até ele parar:
+
+```go
+func ListenAndServe(addr string, handler http.Handler) error
+
+```
+
+Ela faz o bind em `addr` (por exemplo `":8080"`) e repassa cada request recebida ao `handler`. Se `handler` for `nil`, o server usa `http.DefaultServeMux`. A função só retorna quando o server encontra um error fatal, portanto qualquer error retornado é sempre não-nil:
+
+```go
+if err := http.ListenAndServe(":8080", nil); err != nil {
+    log.Fatal(err)
+}
+
+```
+
+### http.Handler
+
+A abstração central do `net/http` é a interface `Handler`:
+
+```go
+type Handler interface {
+    ServeHTTP(ResponseWriter, *Request)
+}
+
+```
+
+Qualquer tipo que implemente `ServeHTTP` pode agir como um handler. O método recebe um `ResponseWriter` para escrever a response e um `*Request` com todas as informações da request recebida.
+
+Algumas regras governam o comportamento correto de um handler:
+
+- Leia da request antes de escrever na response.
+- Não modifique o `*Request` recebido.
+- Não escreva no `ResponseWriter` nem leia de `r.Body` após o retorno de `ServeHTTP`.
+- Panics dentro de handlers são capturados e registrados pelo server; a conexão é encerrada. Se quiser abortar uma request sem registrar nada, use `panic(http.ErrAbortHandler)`.
+
+### http.HandlerFunc
+
+Criar um tipo completo só para implementar `ServeHTTP` é desnecessário na maioria dos casos. O adapter `http.HandlerFunc` converte qualquer função com a assinatura correta em um `Handler`:
+
+```go
+type HandlerFunc func(ResponseWriter, *Request)
+
+func (f HandlerFunc) ServeHTTP(w ResponseWriter, r *Request) {
+    f(w, r)
+}
+
+```
+
+Na prática, você escreve uma função simples e faz o cast:
+
+```go
+func greet(w http.ResponseWriter, r *http.Request) {
+    fmt.Fprintln(w, "Olá!")
+}
+
+http.ListenAndServe(":8080", http.HandlerFunc(greet))
+
+```
+
+`ServeMux.HandleFunc` (visto abaixo) faz esse cast automaticamente, então raramente você precisará escrever `http.HandlerFunc(...)` diretamente.
+
+### http.ResponseWriter
+
+`ResponseWriter` é uma interface com três métodos:
+
+```go
+type ResponseWriter interface {
+    Header() http.Header
+    Write([]byte) (int, error)
+    WriteHeader(statusCode int)
+}
+
+```
+
+- `Header()` retorna o mapa de headers da response. Defina todos os headers antes de chamar `Write` ou `WriteHeader` — após qualquer um dos dois ser chamado, os headers já foram enviados.
+- `WriteHeader(code)` envia a linha de status HTTP e os headers. Só pode ser chamado uma vez; chamadas subsequentes são ignoradas silenciosamente.
+- `Write(data)` escreve bytes no body. Se `WriteHeader` ainda não foi chamado, ele implicitamente envia um `200 OK`.
+
+```go
+func createUser(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusCreated)
+    w.Write([]byte(`{"status":"created"}`))
+}
+
+```
+
+O helper `http.Error` escreve uma mensagem de erro e um status code em uma única chamada, sendo a forma idiomática de retornar erros de handlers:
+
+```go
+http.Error(w, "não encontrado", http.StatusNotFound)
+
+```
+
+### http.Request
+
+`http.Request` é uma struct que representa uma request recebida no lado do server (ou uma request a ser enviada no lado do client):
+
+```go
+type Request struct {
+    Method string
+    URL    *url.URL
+    Header Header        // map[string][]string
+    Body   io.ReadCloser
+    Form   url.Values
+    // ...
+}
+
+```
+
+Campos principais:
+
+- `Method` — o method HTTP como string (`"GET"`, `"POST"`, etc.). Para requests de client, uma string vazia significa GET.
+- `URL` — a URL da request já parseada. Use `r.URL.Path` para o path e `r.URL.Query()` para os query parameters.
+- `Header` — headers da request como um map. Use `r.Header.Get("Name")` para recuperar um único valor.
+- `Body` — para requests de server, sempre não-nil, mas retorna EOF imediatamente quando não há body. O server fecha o body após o retorno do handler; você não precisa fechá-lo manualmente.
+- `Form` — dados de form parseados (query parameters da URL + dados do body em formato form). Só é preenchido após chamar `r.ParseForm()`.
+
+Lendo o body da request:
+
+```go
+func createUser(w http.ResponseWriter, r *http.Request) {
+    data, err := io.ReadAll(r.Body)
+    if err != nil {
+        http.Error(w, "falha ao ler body", http.StatusBadRequest)
+        return
+    }
+    // processar data...
+    w.WriteHeader(http.StatusCreated)
+}
+
+```
+
+## ServeMux
+
+### O que é ServeMux
+
+`http.ServeMux` é o roteador (multiplexer) de requests embutido na biblioteca padrão. Ele faz o match das URLs das requests com os padrões registrados e despacha para o handler correspondente.
+
+```go
+mux := http.NewServeMux()
+mux.HandleFunc("GET /users", listUsers)
+mux.HandleFunc("POST /users", createUser)
+
+http.ListenAndServe(":8080", mux)
+
+```
+
+`HandleFunc` registra uma função simples; `Handle` registra qualquer tipo que implemente `http.Handler`.
+
+### Patterns
+
+Os patterns seguem o formato `[METHOD ][HOST]/[PATH]`. Todas as partes exceto o path são opcionais:
+
+| Pattern           | Corresponde a                                       |
+| ----------------- | --------------------------------------------------- |
+| `/hello`          | Qualquer method, qualquer host, path exato `/hello` |
+| `GET /hello`      | Somente GET, path exato `/hello`                    |
+| `GET /hello/`     | Somente GET, qualquer path começando com `/hello/`  |
+| `GET /users/{id}` | Somente GET, path com wildcard de um segmento       |
+
+Uma barra final sem wildcard (`/hello/`) cria um **subtree pattern** — ele corresponde ao prefixo dado e a tudo que estiver abaixo dele.
+
+### Wildcards
+
+Segmentos entre chaves são wildcards. Um wildcard simples como `{id}` corresponde exatamente a um segmento de path — tudo até o próximo `/`:
+
+```go
+mux.HandleFunc("GET /users/{id}", func(w http.ResponseWriter, r *http.Request) {
+    id := r.PathValue("id")
+    fmt.Fprintf(w, "usuário: %s\n", id)
+})
+
+```
+
+Um GET para `/users/42` define `id` como `"42"`. Use `r.PathValue("nome")` para recuperar qualquer wildcard nomeado.
+
+Um wildcard terminado em `...` corresponde ao resto do path a partir daquele segmento:
+
+```go
+mux.HandleFunc("GET /files/{path...}", func(w http.ResponseWriter, r *http.Request) {
+    path := r.PathValue("path")
+    // GET /files/images/avatar.png → path = "images/avatar.png"
+})
+
+```
+
+O wildcard `...` só pode aparecer no final de um pattern.
+
+O wildcard especial `{$}` corresponde apenas ao path raiz `/` de forma exata. Sem ele, o pattern `"/"` age como catch-all e corresponde a qualquer request que nenhum outro pattern tenha capturado:
+
+```go
+mux.HandleFunc("GET /{$}", homePage) // somente "/"
+mux.HandleFunc("/", notFound)        // catch-all para paths sem match
+
+```
+
+### Especificidade e conflitos
+
+Quando mais de um pattern corresponde a uma request, `ServeMux` seleciona o mais específico. Um pattern com mais segmentos fixos e menos wildcards é considerado mais específico:
+
+```go
+mux.HandleFunc("GET /users/{id}", userHandler)
+mux.HandleFunc("GET /users/me", meHandler)    // mais específico: sem wildcard
+
+// GET /users/me  → meHandler
+// GET /users/42  → userHandler
+
+```
+
+Se dois patterns tiverem a mesma especificidade e ambos puderem capturar a mesma request, `ServeMux` entra em panic no momento do registro — o conflito é detectado na inicialização, não durante o processamento das requests.
