@@ -173,6 +173,29 @@
   vertical-align: top;
 }
 
+/* Native <dialog> search modal. */
+.search-dialog {
+  margin-top: 12vh;
+  margin-inline: auto;
+  margin-bottom: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+.search-dialog::backdrop {
+  background: rgb(0 0 0 / 0.5);
+  backdrop-filter: blur(4px);
+}
+.search-dialog[open] {
+  animation: search-in 0.2s ease-out;
+}
+@keyframes search-in {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+}
+
 /* CSS-only tooltip (no JS island): shown on hover/focus-within. */
 @layer components {
   .tooltip {

@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css'
+import SearchModal from '../components/search/SearchModal.astro'
 
 interface Props {
   title: string
@@ -19,5 +20,6 @@ const { title, lang } = Astro.props
   </head>
   <body>
     <slot />
+    <SearchModal locale={lang} />
   </body>
 </html>

@@ -1,0 +1,379 @@
+---
+import Icon from '../mdx/Icon.astro'
+
+interface Props {
+  locale: string
+}
+
+const { locale } = Astro.props
+
+const STRINGS = {
+  'en-US': {
+    placeholder: 'Search articles...',
+    close: 'Close search',
+    categories: 'Categories',
+    articles: 'Articles',
+    noResults: 'No results found',
+    toOpen: 'to open',
+    toClose: 'to close',
+    toSearch: 'to select',
+  },
+  'pt-BR': {
+    placeholder: 'Pesquisar artigos...',
+    close: 'Fechar pesquisa',
+    categories: 'Categorias',
+    articles: 'Artigos',
+    noResults: 'Nenhum resultado encontrado',
+    toOpen: 'para abrir',
+    toClose: 'para fechar',
+    toSearch: 'para selecionar',
+  },
+}
+
+const t = STRINGS[locale as keyof typeof STRINGS] ?? STRINGS['en-US']
+const kbd = 'rounded-md border border-divider bg-content2 px-1.5 py-0.5 font-mono text-xs'
+---
+
+<dialog
+  class="search-dialog"
+  data-locale={locale}
+  data-l-categories={t.categories}
+  data-l-articles={t.articles}
+  data-l-noresults={t.noResults}
+>
+  <div
+    class="search-panel w-[92vw] max-w-xl bg-content1 rounded-2xl shadow-2xl border border-divider overflow-hidden"
+  >
+    <div class="flex items-center gap-3 p-4 sm:p-5 border-b border-divider">
+      <Icon name="search" size={22} class="text-default-400 shrink-0" />
+      <input
+        type="text"
+        class="search-input flex-1 bg-transparent border-none outline-none text-base sm:text-lg placeholder:text-default-400 min-w-0"
+        placeholder={t.placeholder}
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <button
+        type="button"
+        class="search-close p-2 hover:bg-default/40 rounded-xl transition-colors shrink-0"
+        aria-label={t.close}
+      >
+        <Icon name="x" size={18} class="text-default-400" />
+      </button>
+    </div>
+
+    <div class="search-results max-h-[50vh] overflow-y-auto" hidden></div>
+
+    <div
+      class="px-4 sm:px-5 py-3 border-t border-divider bg-content2/50 flex flex-wrap items-center justify-between gap-2 text-xs text-default-600"
+    >
+      <div class="flex items-center gap-3">
+        <span class="hidden sm:flex items-center gap-1.5">
+          <kbd class={kbd}>⌘ K</kbd>
+          <span>{t.toOpen}</span>
+        </span>
+        <span class="flex items-center gap-1.5">
+          <kbd class={kbd}>Esc</kbd>
+          <span>{t.toClose}</span>
+        </span>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <kbd class={kbd}>↵</kbd>
+        <span>{t.toSearch}</span>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<script>
+  import MiniSearch from 'minisearch'
+
+  interface Section {
+    h: string | null
+    t: string | null
+    c: string
+  }
+  interface Item {
+    id: string
+    type: 'category' | 'article'
+    title: string
+    description: string
+    content?: string
+    sections?: Section[]
+    slug: string
+    url: string
+    category?: string
+    categorySlug?: string
+  }
+  interface Snippet {
+    snippet: string
+    headingId: string | null
+    headingText: string | null
+  }
+
+  const CONFIG = {
+    fields: ['title', 'description', 'content'],
+    storeFields: [
+      'id', 'type', 'title', 'description', 'content', 'sections',
+      'slug', 'url', 'category', 'categorySlug',
+    ],
+    searchOptions: {
+      boost: { title: 2, description: 1.3, content: 1 },
+      fuzzy: 0.2,
+      prefix: true,
+    },
+  }
+
+  const FOLDER_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l3 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2"/></svg>'
+  const FILE_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2"/><path d="M9 9l1 0"/><path d="M9 13l6 0"/><path d="M9 17l6 0"/></svg>'
+
+  const dialog = document.querySelector<HTMLDialogElement>('.search-dialog')
+  if (dialog) init(dialog)
+
+  function init(dialog: HTMLDialogElement) {
+    const locale = dialog.dataset.locale || 'en-US'
+    const L = {
+      categories: dialog.dataset.lCategories || 'Categories',
+      articles: dialog.dataset.lArticles || 'Articles',
+      noResults: dialog.dataset.lNoresults || 'No results found',
+    }
+    const input = dialog.querySelector<HTMLInputElement>('.search-input')!
+    const resultsEl = dialog.querySelector<HTMLElement>('.search-results')!
+    const closeBtn = dialog.querySelector<HTMLButtonElement>('.search-close')!
+
+    let catSearch: MiniSearch<Item> | null = null
+    let artSearch: MiniSearch<Item> | null = null
+    let loaded = false
+    let loading = false
+    let selected = 0
+    let flat: Element[] = []
+
+    async function load() {
+      if (loaded || loading) return
+      loading = true
+      try {
+        const res = await fetch(`/search/${locale}.json`)
+        if (!res.ok) throw new Error('failed')
+        const data = await res.json()
+        catSearch = new MiniSearch<Item>(CONFIG)
+        artSearch = new MiniSearch<Item>(CONFIG)
+        catSearch.addAll(data.categories)
+        artSearch.addAll(
+          data.articles.map((a: Item) => ({
+            ...a,
+            content: a.sections ? a.sections.map((s) => s.c).join(' ') : '',
+          }))
+        )
+        loaded = true
+        if (input.value.trim()) render(input.value)
+      } catch {
+        loaded = false
+      } finally {
+        loading = false
+      }
+    }
+
+    function open() {
+      if (dialog.open) return
+      dialog.showModal()
+      load()
+      requestAnimationFrame(() => input.focus())
+    }
+    function close() {
+      dialog.close()
+      input.value = ''
+      resultsEl.hidden = true
+      resultsEl.innerHTML = ''
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        dialog.open ? close() : open()
+      }
+    })
+    document
+      .querySelectorAll('[data-search-open]')
+      .forEach((el) => el.addEventListener('click', open))
+    closeBtn.addEventListener('click', close)
+    dialog.addEventListener('click', (e) => {
+      if (e.target === dialog) close()
+    })
+    dialog.addEventListener('cancel', () => close())
+
+    input.addEventListener('input', () => render(input.value))
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        move(1)
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        move(-1)
+      } else if (e.key === 'Enter') {
+        e.preventDefault()
+        ;(flat[selected] as HTMLAnchorElement | undefined)?.click()
+      }
+    })
+
+    function move(delta: number) {
+      if (!flat.length) return
+      selected = Math.max(0, Math.min(flat.length - 1, selected + delta))
+      flat.forEach((el, i) => el.classList.toggle('bg-primary/10', i === selected))
+      flat[selected].scrollIntoView({ block: 'nearest' })
+    }
+
+    function render(query: string) {
+      const q = query.trim()
+      if (!q) {
+        resultsEl.hidden = true
+        resultsEl.innerHTML = ''
+        return
+      }
+      resultsEl.hidden = false
+      if (!loaded) {
+        load()
+        return
+      }
+      const terms = q.toLowerCase().split(/\s+/).filter((x) => x.length >= 2)
+      const cats = catSearch!.search(q).slice(0, 3)
+      const arts = artSearch!.search(q).slice(0, 6)
+
+      if (!cats.length && !arts.length) {
+        resultsEl.innerHTML = `<div class="py-8 text-center text-default-400">${escapeHtml(
+          L.noResults
+        )}</div>`
+        flat = []
+        return
+      }
+
+      let idx = 0
+      let html = '<div class="py-2">'
+      if (cats.length) {
+        html += group(L.categories)
+        html += '<ul>' + cats.map((r) => row(r, idx++, terms, true)).join('') + '</ul>'
+      }
+      if (arts.length) {
+        html += group(L.articles)
+        html += '<ul>' + arts.map((r) => row(r, idx++, terms, false)).join('') + '</ul>'
+      }
+      html += '</div>'
+      resultsEl.innerHTML = html
+
+      flat = Array.from(resultsEl.querySelectorAll('[data-search-result]'))
+      selected = 0
+      flat.forEach((el, i) => el.classList.toggle('bg-primary/10', i === 0))
+    }
+
+    function group(label: string) {
+      return `<div class="px-4 sm:px-5 py-2"><span class="text-xs font-medium text-default-400 uppercase tracking-wider">${escapeHtml(
+        label
+      )}</span></div>`
+    }
+
+    function row(r: any, index: number, terms: string[], isCat: boolean) {
+      const { snippet, headingId, headingText } = getSnippet(r, r.match)
+      const href = headingId ? `${r.url}#${headingId}` : r.url
+      const icon = isCat
+        ? `<span class="text-primary shrink-0 mt-0.5">${FOLDER_SVG}</span>`
+        : `<span class="text-default-400 shrink-0 mt-0.5">${FILE_SVG}</span>`
+      const meta =
+        !isCat && r.category
+          ? `<div class="flex items-center gap-1.5 mt-1.5 text-xs text-default-400"><span class="shrink-0">${FOLDER_SVG.replace(
+              'width="20" height="20"',
+              'width="12" height="12"'
+            )}</span><span>${escapeHtml(r.category)}${
+              headingText ? ' › ' + escapeHtml(headingText) : ''
+            }</span></div>`
+          : ''
+      const sub = snippet
+        ? `<p class="text-sm text-default-400 mt-1 line-clamp-2">${highlight(snippet, terms)}</p>`
+        : ''
+      return `<li><a href="${escapeAttr(href)}" data-search-result="${index}" class="flex items-start gap-3 px-4 sm:px-5 py-3 transition-colors hover:bg-default/40">${icon}<div class="flex-1 min-w-0"><p class="font-medium text-foreground">${highlight(
+        r.title,
+        terms
+      )}</p>${sub}${meta}</div></a></li>`
+    }
+
+    // --- snippet extraction (ported from useSearch) ---
+    function getSnippet(item: any, match: Record<string, string[]>): Snippet {
+      const fieldMatches: Record<string, string[]> = {}
+      for (const [term, fields] of Object.entries(match || {})) {
+        for (const f of fields) (fieldMatches[f] ||= []).push(term)
+      }
+      if (item.sections?.length && fieldMatches['content']) {
+        const r = findInSections(item.sections, match)
+        if (r.snippet) return r
+      }
+      for (const field of ['description', 'title']) {
+        const terms = fieldMatches[field]
+        if (!terms?.length) continue
+        const val = item[field] as string
+        if (!val) continue
+        const lower = val.toLowerCase()
+        let best = -1
+        let bestTerm = ''
+        for (const term of terms) {
+          const i = lower.indexOf(term.toLowerCase())
+          if (i !== -1 && (best === -1 || i < best)) {
+            best = i
+            bestTerm = term
+          }
+        }
+        if (best !== -1) return { snippet: cut(val, best, bestTerm.length), headingId: null, headingText: null }
+      }
+      if (item.description) {
+        return {
+          snippet: item.description.length > 100 ? item.description.slice(0, 100) + '...' : item.description,
+          headingId: null,
+          headingText: null,
+        }
+      }
+      const c = item.content || ''
+      return { snippet: c.length > 100 ? c.slice(0, 100) + '...' : c, headingId: null, headingText: null }
+    }
+
+    function findInSections(sections: Section[], match: Record<string, string[]>): Snippet {
+      const contentTerms: string[] = []
+      for (const [term, fields] of Object.entries(match || {})) {
+        if (fields.includes('content')) contentTerms.push(term)
+      }
+      if (!contentTerms.length) return { snippet: '', headingId: null, headingText: null }
+      for (const s of sections) {
+        const lower = s.c.toLowerCase()
+        for (const term of contentTerms) {
+          const i = lower.indexOf(term.toLowerCase())
+          if (i !== -1) return { snippet: cut(s.c, i, term.length), headingId: s.h, headingText: s.t }
+        }
+      }
+      return { snippet: '', headingId: null, headingText: null }
+    }
+
+    function cut(text: string, index: number, len: number) {
+      const start = Math.max(0, index - 30)
+      const end = Math.min(text.length, index + len + 70)
+      let s = text.slice(start, end)
+      if (start > 0) s = '...' + s
+      if (end < text.length) s = s + '...'
+      return s
+    }
+
+    function highlight(text: string, terms: string[]) {
+      const safe = escapeHtml(text)
+      if (!terms.length) return safe
+      const escaped = terms
+        .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+        .sort((a, b) => b.length - a.length)
+      const re = new RegExp(`(${escaped.join('|')})`, 'gi')
+      return safe.replace(re, '<mark class="bg-primary/30 text-foreground rounded px-0.5">$1</mark>')
+    }
+
+    function escapeHtml(s: string) {
+      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    }
+    function escapeAttr(s: string) {
+      return escapeHtml(s).replace(/"/g, '&quot;')
+    }
+  }
+</script>

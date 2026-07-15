@@ -11,6 +11,9 @@ export type IconName =
   | 'quote'
   | 'copy'
   | 'download'
+  | 'search'
+  | 'folder'
+  | 'file-text'
 
 const PATHS: Record<IconName, string[]> = {
   'info-circle': [
@@ -44,6 +47,15 @@ const PATHS: Record<IconName, string[]> = {
     'M4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1',
   ],
   download: ['M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2', 'M7 11l5 5l5 -5', 'M12 4l0 12'],
+  search: ['M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0', 'M21 21l-6 -6'],
+  folder: ['M5 4h4l3 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2'],
+  'file-text': [
+    'M14 3v4a1 1 0 0 0 1 1h4',
+    'M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2',
+    'M9 9l1 0',
+    'M9 13l6 0',
+    'M9 17l6 0',
+  ],
 }
 
 interface Props {

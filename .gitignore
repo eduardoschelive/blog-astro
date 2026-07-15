@@ -24,3 +24,6 @@ pnpm-debug.log*
 .idea/
 .vercel
 docs/
+
+# generated search index
+public/search/
