@@ -1,0 +1,41 @@
+---
+import { getAllRoutes, type PageRoute } from '../../lib/routes'
+
+// Single catch-all: translated segments rule out per-page files, so one route
+// dispatches home/categories/about/resources/category/article. An undefined
+// `path` renders the home page (/en-US, /pt-BR).
+export async function getStaticPaths() {
+  const routes = await getAllRoutes()
+  return routes.map((route) => ({
+    params: { locale: route.locale, path: route.path || undefined },
+    props: route,
+  }))
+}
+
+type Props = PageRoute
+const route = Astro.props
+const { locale, type, alternates } = route
+
+// Placeholder render; real content/layout/SEO come in later phases.
+let title: string = type
+if (type === 'category' && route.category) title = route.category.data.title
+else if (type === 'article' && route.article) title = route.article.data.title
+---
+
+<!doctype html>
+<html lang={locale}>
+  <head>
+    <meta charset="utf-8" />
+    <title>{title}</title>
+    <link rel="canonical" href={alternates[locale]} />
+    {
+      (Object.entries(alternates) as [string, string][]).map(([loc, href]) => (
+        <link rel="alternate" hreflang={loc} href={href} />
+      ))
+    }
+  </head>
+  <body>
+    <h1>{title}</h1>
+    <p>type: {type} · locale: {locale}</p>
+  </body>
+</html>
