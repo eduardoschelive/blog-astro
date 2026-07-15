@@ -1,5 +1,6 @@
 ---
 import { getAllRoutes, type PageRoute } from '../../lib/routes'
+import { getPageSeo } from '../../lib/seo'
 import BaseLayout from '../../layouts/BaseLayout.astro'
 import ArticleBody from '../../components/mdx/ArticleBody.astro'
 
@@ -16,21 +17,11 @@ export async function getStaticPaths() {
 
 type Props = PageRoute
 const route = Astro.props
-const { locale, type, alternates } = route
-
-let title: string = type
-if (type === 'category' && route.category) title = route.category.data.title
-else if (type === 'article' && route.article) title = route.article.data.title
+const { locale, type } = route
+const seo = getPageSeo(route)
 ---
 
-<BaseLayout title={title} lang={locale}>
-  <link slot="head" rel="canonical" href={alternates[locale]} />
-  {
-    (Object.entries(alternates) as [string, string][]).map(([loc, href]) => (
-      <link slot="head" rel="alternate" hreflang={loc} href={href} />
-    ))
-  }
-
+<BaseLayout locale={locale} seo={seo}>
   <main class="mx-auto max-w-3xl px-4 py-10">
     {
       type === 'article' && route.article ? (
@@ -40,7 +31,7 @@ else if (type === 'article' && route.article) title = route.article.data.title
         </>
       ) : (
         <>
-          <h1 class="text-4xl font-bold">{title}</h1>
+          <h1 class="text-4xl font-bold">{seo.title}</h1>
           <p class="mt-2 text-foreground/70">type: {type} · locale: {locale}</p>
         </>
       )

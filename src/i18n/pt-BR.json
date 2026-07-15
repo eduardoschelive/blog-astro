@@ -1,0 +1,256 @@
+{
+  "Metadata": {
+    "home": {
+      "title": "Eduardo Schelive - Engenheiro de Software",
+      "description": "Artigos sobre desenvolvimento web, infraestrutura em nuvem e arquitetura de software. Tutoriais práticos de Next.js, React, TypeScript e tecnologias modernas."
+    },
+    "about": {
+      "title": "Sobre mim | Eduardo Schelive",
+      "description": "Engenheiro de software desde 2013, apaixonado por desenvolvimento web, infraestrutura em nuvem e compartilhamento de conhecimento. Conheça minha trajetória, experiências e as tecnologias com as quais trabalho."
+    },
+    "categories": {
+      "title": "Categorias | Eduardo Schelive",
+      "description": "Explore todas as categorias de artigos organizadas por tema. De desenvolvimento web a infraestrutura em nuvem, encontre guias completos e tutoriais sobre tecnologias modernas."
+    },
+    "resources": {
+      "title": "Recursos para Desenvolvedores | Eduardo Schelive",
+      "description": "Lista curada de ferramentas e sites que todo desenvolvedor deveria conhecer — editores de DER, testadores de API, hospedagem, analytics e mais, com preços e casos de uso."
+    }
+  },
+  "Hero": {
+    "greeting": "Olá, meu nome é",
+    "subtitle": "Bem-vindo ao meu blog onde compartilho artigos sobre desenvolvimento web, infraestrutura em nuvem, arquitetura de sistemas e tecnologias modernas. Tutoriais, guias e experiências práticas de projetos reais.",
+    "aboutButton": "Sobre mim",
+    "articlesButton": "Ver artigos",
+    "featuredArticle": "Artigo mais recente",
+    "readMore": "Ler artigo completo",
+    "scrollDown": "Role para baixo"
+  },
+  "Article": {
+    "dateNotAvailable": "Data não disponível",
+    "readingTime": "{minutes, plural, =1 {1 min de leitura} other {# min de leitura}}",
+    "filedUnder": "Arquivado em",
+    "on": "em",
+    "updatedAt": "Atualizado em {date}",
+    "notFound": {
+      "title": "Artigo não encontrado",
+      "description": "O artigo solicitado não pôde ser encontrado"
+    },
+    "share": {
+      "title": "Compartilhar artigo",
+      "x": "Compartilhar no X",
+      "linkedin": "Compartilhar no LinkedIn",
+      "whatsapp": "Compartilhar no WhatsApp",
+      "telegram": "Compartilhar no Telegram",
+      "reddit": "Compartilhar no Reddit",
+      "copyLink": "Copiar link",
+      "copied": "Link copiado!"
+    },
+    "navigation": {
+      "label": "Navegação entre artigos",
+      "previous": "Anterior",
+      "next": "Próximo",
+      "finished": "Você chegou ao fim",
+      "browseCategories": "Ver todas as categorias"
+    },
+    "related": {
+      "title": "Artigos relacionados"
+    }
+  },
+  "HomePage": {
+    "latest": {
+      "title": "Últimos artigos",
+      "subtitle": "Descubra os artigos e insights mais recentes do nosso blog",
+      "viewAll": "Ver todos os artigos",
+      "readMore": "Ler mais"
+    },
+    "categories": {
+      "title": "Explorar categorias",
+      "subtitle": "Navegue por diferentes tópicos e encontre artigos que mais lhe interessam.",
+      "viewAll": "Ver todas as categorias"
+    }
+  },
+  "Theme": {
+    "dark": "escuro",
+    "light": "claro",
+    "tooltip": {
+      "description": "Clique aqui para mudar para o modo {theme}"
+    }
+  },
+  "Locale": {
+    "label": "Idioma",
+    "tooltip": {
+      "description": "Clique aqui para mudar o idioma"
+    },
+    "pt-BR": "Português",
+    "en-US": "Inglês"
+  },
+  "TableOfContents": {
+    "title": "Índice"
+  },
+  "Footer": {
+    "social": {
+      "email": "Envie-me um email",
+      "github": "Visite meu perfil no GitHub",
+      "linkedin": "Conecte-se comigo no LinkedIn",
+      "rss": "Feed RSS"
+    },
+    "bio": "Engenheiro de Software compartilhando insights sobre desenvolvimento web, infraestrutura em nuvem e tecnologias modernas.",
+    "quickLinks": "Links rápidos",
+    "connect": "Conecte-se",
+    "copyright": "Todos os direitos reservados."
+  },
+  "NotFound": {
+    "title": "Página não encontrada",
+    "description": "A página que você está procurando não existe, foi movida ou nunca existiu. Mas não se preocupe, podemos te ajudar a encontrar o caminho de volta!",
+    "goHome": "Voltar ao Início",
+    "browseArticles": "Explorar Artigos",
+    "errorCode": "404"
+  },
+  "Error": {
+    "title": "Algo deu errado",
+    "description": "Desculpe, algo não funcionou como esperado. Nossa equipe foi notificada e estamos trabalhando para resolver o problema.",
+    "tryAgain": "Tentar Novamente",
+    "goHome": "Voltar ao Início",
+    "errorCode": "Erro"
+  },
+  "Navbar": {
+    "home": "Início",
+    "categories": "Categorias",
+    "resources": "Recursos",
+    "about": "Sobre",
+    "openMenu": "Abrir menu",
+    "closeMenu": "Fechar menu",
+    "viewAllCategories": "Ver todas as categorias"
+  },
+  "Navigation": {
+    "search": {
+      "button": "Pesquisar",
+      "tooltip": "Pesquisar artigos",
+      "placeholder": "Pesquisar artigos...",
+      "close": "Fechar pesquisa",
+      "toOpen": "para abrir",
+      "toClose": "para fechar",
+      "toSearch": "para selecionar",
+      "noResults": "Nenhum resultado encontrado",
+      "categories": "Categorias",
+      "articles": "Artigos"
+    },
+    "rss": {
+      "button": "Feed RSS",
+      "tooltip": "Assinar Feed RSS"
+    },
+    "breadcrumb": {
+      "label": "Navegação estrutural"
+    },
+    "skipToContent": "Pular para o conteúdo principal"
+  },
+  "Code": {
+    "copy": "Copiar código",
+    "copied": "Copiado!",
+    "download": "Baixar código"
+  },
+  "MDXLink": {
+    "clickToAccess": "Clique aqui para acessar",
+    "clickToScroll": "Clique aqui para ir até a seção",
+    "clickToOpen": "Clique aqui para abrir em nova aba"
+  },
+  "MDX": {
+    "Callout": {
+      "info": "Informação",
+      "warning": "Aviso",
+      "success": "Sucesso",
+      "danger": "Perigo",
+      "note": "Nota"
+    },
+    "Terminal": {
+      "copy": "Copiar comando",
+      "copied": "Copiado!"
+    },
+    "Steps": {
+      "step": "Passo"
+    }
+  },
+  "Categories": {
+    "title": "Categorias",
+    "subtitle": "Todos os meus artigos organizados por tema. A maioria segue uma ordem sequencial, então você pode ler como um guia de aprendizado.",
+    "articles": "Artigos",
+    "articlesCount": "{count, plural, =0 {Nenhum artigo} =1 {1 artigo} other {# artigos}}",
+    "articlesInTrail": "{count, plural, =0 {Nenhum artigo} =1 {1 artigo} other {# artigos}}",
+    "startHere": "Comece por aqui:",
+    "viewFullTrail": "Ver todos os artigos",
+    "comingSoon": "Em breve",
+    "readArticle": "Ler artigo",
+    "viewGrid": "Visualização em grade",
+    "viewList": "Visualização em lista",
+    "emptyState": {
+      "title": "Conteúdo em Breve!",
+      "subtitle": "Estamos preparando conteúdo incrível para você",
+      "cta": "Volte em breve!"
+    },
+    "notFound": {
+      "title": "Categoria não encontrada",
+      "description": "A categoria solicitada não pôde ser encontrada"
+    }
+  },
+  "Resources": {
+    "title": "Recursos para Desenvolvedores",
+    "subtitle": "Ferramentas e sites que vale a pena ter no bookmark. Cada entrada diz o que faz, por que é útil e quanto custa.",
+    "filterAll": "Todos",
+    "filterByCategory": "Categoria",
+    "filterByPricing": "Preço",
+    "searchPlaceholder": "Buscar por nome, descrição ou tag…",
+    "noResults": "Nenhum resultado. Tente outra busca ou filtro.",
+    "visitSite": "Visitar site",
+    "seeMore": "Ver mais",
+    "whyUse": "Por que usar",
+    "pricing": {
+      "free": "Gratuito",
+      "freemium": "Freemium",
+      "paid": "Pago",
+      "open-source": "Open Source"
+    },
+    "category": {
+      "database": "Banco de dados",
+      "design": "Design",
+      "devops": "DevOps",
+      "api": "API",
+      "hosting": "Hospedagem",
+      "monitoring": "Monitoramento",
+      "testing": "Testes",
+      "documentation": "Documentação",
+      "productivity": "Produtividade",
+      "security": "Segurança",
+      "ai": "IA",
+      "other": "Outros"
+    }
+  },
+  "AboutPage": {
+    "greeting": "Olá, eu sou",
+    "intro": "Eu comecei a mexer com desenvolvimento de software em 2013 (fazem {years} anos, quando eu tinha apenas 10 anos) por puro hobbie e decidi que seria a minha profissão no futuro.",
+    "experience": "Eu já trabalhei em diversas empresas e atuo principalmente no ramo de desenvolvimento web, apesar de já ter feito aplicativos e soluções desktop.",
+    "curiosities": {
+      "title": "Algumas Curiosidades",
+      "techstack": {
+        "title": "Minha stack favorita",
+        "description": "Eu gosto de todas as ferramentas e de tudo que há em tecnologia. Eu acredito que se você conhece o suficiente da sua tecnologia, você é quem tem mais motivos para não gostar dela. Afinal, quanto mais experiência, mais fácil spottar os defeitos dela."
+      },
+      "minecraft": {
+        "title": "Jogos Também Ensinam",
+        "description": "Eu comecei na programação por causa do",
+        "link": "Plugin Skript do Minecraft",
+        "continuation": "Eu queria criar sistemas e comandos no servidor, então fui aprendendo lógica, eventos, variáveis e condições ali mesmo. Aquilo virou minha porta de entrada pro mundo do código, e foi onde percebi que eu realmente curtia programar. Posteriormente, pelos mesmos motivos, aprendi e me aprofundei em Java"
+      },
+      "clipper": {
+        "title": "Old But Gold",
+        "description": "Eu já trabalhei com tecnologias muito mais antigas, como Clipper (lançado em 1985). Tive o privilégio de criar uma API RESTful completa do zero. Pode parecer bobo, mas lembre-se que Clipper não possui nenhuma abstração pra isso como as linguagens modernas (e caso tenha, eu não usei), o que significou estudar as RFCs e como funciona a fundo o processo de quando você faz um request para um servidor."
+      }
+    },
+    "contact": {
+      "title": "Entre em Contato",
+      "email": "Envie-me um email",
+      "github": "Veja meu GitHub",
+      "linkedin": "Conecte-se no LinkedIn"
+    }
+  }
+}

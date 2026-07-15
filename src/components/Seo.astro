@@ -1,0 +1,84 @@
+---
+import type { Locale } from '../lib/routes'
+import { PERSONAL, SITE_URL } from '../constants/site'
+
+interface Props {
+  locale: Locale
+  title: string
+  description: string
+  keywords?: string[]
+  canonical: string
+  alternates: Record<Locale, string>
+  ogType?: 'website' | 'article' | 'profile'
+  publishedTime?: string
+  modifiedTime?: string
+  tags?: string[]
+  ogImage: string
+  noIndex?: boolean
+}
+
+const {
+  locale,
+  title,
+  description,
+  keywords = [],
+  canonical,
+  alternates,
+  ogType = 'website',
+  publishedTime,
+  modifiedTime,
+  tags = [],
+  ogImage,
+  noIndex = false,
+} = Astro.props
+
+const siteName = `${PERSONAL.name.short} Blog`
+const robots = noIndex
+  ? 'noindex, follow'
+  : 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1'
+---
+
+<title>{title}</title>
+<meta name="description" content={description} />
+{keywords.length > 0 && <meta name="keywords" content={keywords.join(', ')} />}
+<meta name="author" content={PERSONAL.name.full} />
+<meta name="creator" content={PERSONAL.name.full} />
+<meta name="publisher" content={PERSONAL.name.full} />
+<meta name="robots" content={robots} />
+
+<link rel="canonical" href={canonical} />
+<link rel="alternate" hreflang="en-US" href={alternates['en-US']} />
+<link rel="alternate" hreflang="pt-BR" href={alternates['pt-BR']} />
+<link rel="alternate" hreflang="x-default" href={alternates['en-US']} />
+
+<meta property="og:type" content={ogType} />
+<meta property="og:locale" content={locale} />
+<meta property="og:url" content={canonical} />
+<meta property="og:title" content={title} />
+<meta property="og:description" content={description} />
+<meta property="og:site_name" content={siteName} />
+<meta property="og:image" content={ogImage} />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+{
+  ogType === 'article' && (
+    <>
+      {publishedTime && (
+        <meta property="article:published_time" content={publishedTime} />
+      )}
+      {modifiedTime && (
+        <meta property="article:modified_time" content={modifiedTime} />
+      )}
+      {tags.map((tag) => (
+        <meta property="article:tag" content={tag} />
+      ))}
+    </>
+  )
+}
+
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content={title} />
+<meta name="twitter:description" content={description} />
+<meta name="twitter:creator" content={PERSONAL.twitter} />
+<meta name="twitter:image" content={ogImage} />
+{SITE_URL && <link rel="alternate" type="application/rss+xml" title={siteName} href={`${SITE_URL}/${locale}/rss.xml`} />}

@@ -1,25 +1,28 @@
 ---
 import '../styles/global.css'
 import SearchModal from '../components/search/SearchModal.astro'
+import Seo from '../components/Seo.astro'
+import type { PageSeo } from '../lib/seo'
+import type { Locale } from '../lib/routes'
 
 interface Props {
-  title: string
-  lang: string
+  locale: Locale
+  seo: PageSeo
 }
 
-const { title, lang } = Astro.props
+const { locale, seo } = Astro.props
 ---
 
 <!doctype html>
-<html lang={lang} class="dark">
+<html lang={locale} class="dark">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{title}</title>
+    <Seo locale={locale} {...seo} />
     <slot name="head" />
   </head>
   <body>
     <slot />
-    <SearchModal locale={lang} />
+    <SearchModal locale={locale} />
   </body>
 </html>
