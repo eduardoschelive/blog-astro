@@ -1,0 +1,66 @@
+---
+// Inlined Tabler icons (github.com/tabler/tabler-icons, MIT) to avoid pulling
+// react-icons. Add a `d` array here when a component needs a new glyph.
+export type IconName =
+  | 'info-circle'
+  | 'alert-triangle'
+  | 'check'
+  | 'x'
+  | 'bulb'
+  | 'book-2'
+  | 'quote'
+
+const PATHS: Record<IconName, string[]> = {
+  'info-circle': [
+    'M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0',
+    'M12 9h.01',
+    'M11 12h1v4h1',
+  ],
+  'alert-triangle': [
+    'M12 9v4',
+    'M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0',
+    'M12 16h.01',
+  ],
+  check: ['M5 12l5 5l10 -10'],
+  x: ['M18 6l-12 12', 'M6 6l12 12'],
+  bulb: [
+    'M3 12h1m8 -9v1m8 8h1m-15.4 -6.4l.7 .7m12.1 -.7l-.7 .7',
+    'M9 16a5 5 0 1 1 6 0a3.5 3.5 0 0 0 -1 3a2 2 0 0 1 -4 0a3.5 3.5 0 0 0 -1 -3',
+    'M9.7 17l4.6 0',
+  ],
+  'book-2': [
+    'M19 4v16h-12a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12',
+    'M19 16h-12a2 2 0 0 0 -2 2',
+    'M9 8h6',
+  ],
+  quote: [
+    'M10 11h-4a1 1 0 0 1 -1 -1v-3a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v6c0 2.667 -1.333 4.333 -4 5',
+    'M19 11h-4a1 1 0 0 1 -1 -1v-3a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v6c0 2.667 -1.333 4.333 -4 5',
+  ],
+}
+
+interface Props {
+  name: IconName
+  size?: number
+  class?: string
+}
+
+const { name, size = 20, class: className } = Astro.props
+const paths = PATHS[name]
+---
+
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width={size}
+  height={size}
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+  class={className}
+  aria-hidden="true"
+>
+  {paths.map((d) => <path d={d} />)}
+</svg>

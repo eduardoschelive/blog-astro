@@ -1,0 +1,37 @@
+---
+import { render, type CollectionEntry } from 'astro:content'
+import Callout from './Callout.astro'
+import Example from './Example.astro'
+import Blockquote from './Blockquote.astro'
+import Tooltip from './Tooltip.astro'
+import MemoryVisualization from './MemoryVisualization.astro'
+import StackVisualization from './StackVisualization.astro'
+import QueueVisualization from './QueueVisualization.astro'
+import HashTableVisualization from './HashTableVisualization.astro'
+import HashTableCompare from './HashTableCompare.astro'
+import TypeTable from './TypeTable.astro'
+
+interface Props {
+  entry: CollectionEntry<'articles'>
+}
+
+const { entry } = Astro.props
+const { Content } = await render(entry)
+
+const components = {
+  Callout,
+  Example,
+  Tooltip,
+  MemoryVisualization,
+  StackVisualization,
+  QueueVisualization,
+  HashTableVisualization,
+  HashTableCompare,
+  TypeTable,
+  blockquote: Blockquote,
+}
+---
+
+<div class="article-content">
+  <Content components={components} />
+</div>

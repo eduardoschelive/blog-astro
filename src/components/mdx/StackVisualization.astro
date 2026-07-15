@@ -1,0 +1,92 @@
+---
+interface Props {
+  title: string
+  items: (number | string)[]
+  incoming?: number | string
+  outgoing?: boolean
+}
+
+const { title, items, incoming, outgoing = false } = Astro.props
+const displayItems = [...items].reverse()
+const itemsToShow = outgoing ? displayItems.slice(1) : displayItems
+---
+
+<div class="my-8 w-full">
+  <div
+    class="bg-linear-to-br from-content1 to-content2 border border-divider rounded-xl p-6 w-full"
+  >
+    <div class="text-warning font-mono text-sm font-semibold mb-5">{title}</div>
+
+    <div class="flex flex-col items-center">
+      {
+        outgoing && displayItems.length > 0 && (
+          <>
+            <div class="border-2 border-warning/30 rounded-lg px-8 py-3 text-center opacity-40 min-w-40 bg-content2">
+              <div class="text-warning text-xs font-semibold font-mono mb-1">
+                top
+              </div>
+              <div class="text-success text-xl font-bold font-mono">
+                {displayItems[0]}
+              </div>
+            </div>
+            <div class="text-warning/50 text-2xl my-1">↑</div>
+          </>
+        )
+      }
+
+      {
+        incoming !== undefined && (
+          <>
+            <div class="border-2 border-primary rounded-lg px-8 py-3 text-center min-w-40 bg-content2">
+              <div class="text-primary text-xs font-semibold font-mono mb-1">
+                incoming
+              </div>
+              <div class="text-success text-xl font-bold font-mono">
+                {incoming}
+              </div>
+            </div>
+            <div class="text-primary/60 text-2xl my-1">↓</div>
+          </>
+        )
+      }
+
+      <div
+        class="border-2 border-dashed border-warning/40 rounded-lg px-4 py-3 flex flex-col gap-2 min-w-[180px] w-full max-w-[280px]"
+      >
+        {
+          itemsToShow.map((item, index) => {
+            const isTop = index === 0
+            return (
+              <div
+                class:list={[
+                  'rounded-lg px-8 py-3 text-center border-2 font-mono',
+                  isTop ? 'bg-content2 border-warning' : 'bg-content2 border-divider',
+                ]}
+              >
+                {isTop && (
+                  <div class="text-warning text-xs font-semibold mb-1">top</div>
+                )}
+                <div
+                  class:list={[
+                    'text-xl font-bold',
+                    isTop ? 'text-warning' : 'text-success',
+                  ]}
+                >
+                  {item}
+                </div>
+              </div>
+            )
+          })
+        }
+      </div>
+    </div>
+
+    {
+      Astro.slots.has('default') && (
+        <div class="font-mono text-foreground/70 text-center text-sm border-t border-divider pt-4 mt-5">
+          <slot />
+        </div>
+      )
+    }
+  </div>
+</div>

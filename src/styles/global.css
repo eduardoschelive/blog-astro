@@ -1,0 +1,153 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --background: #d5d6db;
+  --foreground: #24283b;
+  --divider: #9699a3;
+  --overlay: #cbccd1;
+  --focus: #2e7de9;
+  --content1: #d5d6db;
+  --content2: #e9e9ec;
+  --content3: #cbccd1;
+  --content4: #9699a3;
+  --default: #b3b5bd;
+  --default-foreground: #1a1b26;
+  --default-400: #9699a3;
+  --primary: #1c4bb7;
+  --primary-foreground: #ffffff;
+  --secondary: #5a3e8e;
+  --secondary-foreground: #ffffff;
+  --success: #33635c;
+  --success-foreground: #ffffff;
+  --warning: #8f5e15;
+  --warning-foreground: #ffffff;
+  --danger: #8c4351;
+  --danger-foreground: #ffffff;
+}
+
+.dark {
+  --background: #1a1b26;
+  --foreground: #c0caf5;
+  --divider: #414868;
+  --overlay: #16161e;
+  --focus: #7aa2f7;
+  --content1: #1a1b26;
+  --content2: #16161e;
+  --content3: #24283b;
+  --content4: #414868;
+  --default: #565f89;
+  --default-foreground: #c0caf5;
+  --default-400: #9aa5ce;
+  --primary: #7aa2f7;
+  --primary-foreground: #1a1b26;
+  --secondary: #bb9af7;
+  --secondary-foreground: #1a1b26;
+  --success: #9ece6a;
+  --success-foreground: #1a1b26;
+  --warning: #e0af68;
+  --warning-foreground: #1a1b26;
+  --danger: #f7768e;
+  --danger-foreground: #1a1b26;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-divider: var(--divider);
+  --color-overlay: var(--overlay);
+  --color-focus: var(--focus);
+  --color-content1: var(--content1);
+  --color-content2: var(--content2);
+  --color-content3: var(--content3);
+  --color-content4: var(--content4);
+  --color-default: var(--default);
+  --color-default-foreground: var(--default-foreground);
+  --color-default-400: var(--default-400);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-danger: var(--danger);
+  --color-danger-foreground: var(--danger-foreground);
+}
+
+@layer base {
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+  }
+
+  code,
+  pre {
+    font-family: ui-monospace, 'Fira Code', 'Cascadia Code', monospace;
+  }
+}
+
+/* Base markdown elements inside rendered article bodies. Zero-specificity
+   selectors so component-level utilities (e.g. Callout's [&>p]) still win. */
+@layer components {
+  .article-content :where(h1) {
+    @apply text-4xl font-bold my-4;
+  }
+  .article-content :where(h2) {
+    @apply text-3xl font-bold my-6 relative;
+  }
+  .article-content :where(h2)::before {
+    content: '';
+    @apply absolute -left-4 top-0 bottom-0 w-1 bg-primary;
+  }
+  .article-content :where(h3) {
+    @apply text-xl font-bold my-4 text-primary;
+  }
+  .article-content :where(p) {
+    @apply my-4;
+  }
+  .article-content :where(ul) {
+    @apply list-disc list-outside ml-6 my-4 space-y-2 marker:text-primary;
+  }
+  .article-content :where(ol) {
+    @apply list-decimal list-outside ml-6 my-4 space-y-2 marker:text-primary;
+  }
+  .article-content :where(li) {
+    @apply text-foreground/90 pl-2;
+  }
+  .article-content :where(:not(pre) > code) {
+    @apply bg-content2 px-1.5 py-0.5 rounded text-sm;
+  }
+  .article-content :where(a) {
+    @apply text-primary underline underline-offset-2;
+  }
+}
+
+/* CSS-only tooltip (no JS island): shown on hover/focus-within. */
+@layer components {
+  .tooltip {
+    position: relative;
+    display: inline-block;
+  }
+  .tooltip-bubble {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 50;
+    width: max-content;
+    max-width: 20rem;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 150ms ease;
+    @apply bg-content2/95 backdrop-blur-sm border border-secondary/30 shadow-xl rounded-lg px-4 py-3 text-sm;
+  }
+  .tooltip:hover .tooltip-bubble,
+  .tooltip:focus-within .tooltip-bubble {
+    opacity: 1;
+    visibility: visible;
+  }
+}

@@ -1,0 +1,103 @@
+---
+interface HashTableEntry {
+  key: string
+  value: string | number
+}
+
+interface ProbeStep {
+  slot: number
+  outcome: 'skip' | 'found' | 'stop'
+}
+
+interface HashTableBucket {
+  entries?: HashTableEntry[]
+  tombstone?: boolean
+}
+
+interface Props {
+  title: string
+  buckets: HashTableBucket[]
+  probeSteps?: ProbeStep[]
+}
+
+const { title, buckets, probeSteps = [] } = Astro.props
+const stepMap = new Map(
+  probeSteps.map((s, i) => [s.slot, { ...s, index: i + 1 }])
+)
+---
+
+<div class="flex flex-col gap-3 flex-1 min-w-0">
+  <div class="font-mono text-sm font-semibold text-primary">{title}</div>
+  <div class="flex flex-col gap-1.5">
+    {
+      buckets.map((bucket, index) => {
+        const step = stepMap.get(index)
+        const isEmpty =
+          !bucket.tombstone && (!bucket.entries || bucket.entries.length === 0)
+
+        let borderClass = 'border-divider/40'
+        if (step?.outcome === 'found') borderClass = 'border-success'
+        else if (step?.outcome === 'stop') borderClass = 'border-danger/70'
+        else if (step?.outcome === 'skip') borderClass = 'border-warning/60'
+        else if (bucket.tombstone) borderClass = 'border-warning/40'
+        else if (!isEmpty) borderClass = 'border-primary/40'
+
+        return (
+          <div class="flex items-center gap-2">
+            <div class="w-14 shrink-0 flex items-center justify-end gap-1">
+              {step && (
+                <>
+                  <span class="text-foreground/40 font-mono text-xs">
+                    {step.index}.
+                  </span>
+                  {step.outcome === 'skip' && (
+                    <span class="text-warning font-mono text-xs">skip</span>
+                  )}
+                  {step.outcome === 'found' && (
+                    <span class="text-success font-mono text-xs font-bold">✓</span>
+                  )}
+                  {step.outcome === 'stop' && (
+                    <span class="text-danger font-mono text-xs font-bold">✗</span>
+                  )}
+                </>
+              )}
+            </div>
+            <div class="text-foreground/40 font-mono text-xs w-7 text-right shrink-0">
+              [{index}]
+            </div>
+            <div
+              class:list={[
+                'border-2 rounded-lg px-3 py-1.5 flex items-center gap-2 min-w-0 flex-1 bg-content2',
+                borderClass,
+              ]}
+            >
+              {isEmpty && (
+                <span class="text-foreground/30 font-mono text-sm">—</span>
+              )}
+              {bucket.tombstone && (
+                <span class="text-warning/60 font-mono text-xs line-through">
+                  deleted
+                </span>
+              )}
+              {!isEmpty && !bucket.tombstone && bucket.entries && (
+                <div class="flex items-center gap-1 flex-wrap">
+                  {bucket.entries.map((entry) => (
+                    <div class="flex items-center gap-1 font-mono text-sm rounded px-2 py-0.5 border border-primary/40 bg-content1">
+                      <span class="text-primary">"{entry.key}"</span>
+                      <span class="text-foreground/40 text-xs">→</span>
+                      <span class="text-success font-bold">
+                        {typeof entry.value === 'string'
+                          ? `"${entry.value}"`
+                          : entry.value}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })
+    }
+  </div>
+</div>

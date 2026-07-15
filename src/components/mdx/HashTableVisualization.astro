@@ -1,0 +1,115 @@
+---
+interface HashTableEntry {
+  key: string
+  value: string | number
+}
+
+interface HashTableBucket {
+  entries?: HashTableEntry[]
+  tombstone?: boolean
+  highlighted?: boolean
+}
+
+interface Props {
+  title: string
+  buckets: HashTableBucket[]
+  hashKey?: string
+  hashSlot?: number
+  mode?: 'chaining' | 'open'
+}
+
+const { title, buckets, hashKey, hashSlot, mode = 'chaining' } = Astro.props
+---
+
+<div class="my-8 w-full">
+  <div
+    class="bg-linear-to-br from-content1 to-content2 border border-divider rounded-xl p-6 w-full"
+  >
+    <div class="text-primary font-mono text-sm font-semibold mb-5">{title}</div>
+
+    {
+      hashKey !== undefined && hashSlot !== undefined && (
+        <div class="text-success font-mono text-xs mb-4 bg-content2 inline-block px-3 py-1 rounded-md border border-success/30">
+          hash("{hashKey}") → [{hashSlot}]
+        </div>
+      )
+    }
+
+    <div class="flex flex-col gap-1.5">
+      {
+        buckets.map((bucket, index) => {
+          const isEmpty =
+            !bucket.tombstone && (!bucket.entries || bucket.entries.length === 0)
+          const isHighlighted = bucket.highlighted
+
+          let borderClass = 'border-divider/40'
+          if (isHighlighted) borderClass = 'border-success'
+          else if (bucket.tombstone) borderClass = 'border-warning/60'
+          else if (!isEmpty) borderClass = 'border-primary/60'
+
+          return (
+            <div class="flex items-center gap-2">
+              <div class="w-4 text-success font-mono text-sm font-bold shrink-0">
+                {isHighlighted ? '→' : ''}
+              </div>
+              <div class="text-foreground/40 font-mono text-xs w-7 text-right shrink-0">
+                [{index}]
+              </div>
+              <div
+                class:list={[
+                  'border-2 rounded-lg px-3 py-1.5 flex items-center gap-2 min-w-0 flex-1 bg-content2',
+                  borderClass,
+                ]}
+              >
+                {isEmpty && (
+                  <span class="text-foreground/30 font-mono text-sm">—</span>
+                )}
+                {bucket.tombstone && (
+                  <span class="text-warning/60 font-mono text-xs line-through">
+                    deleted
+                  </span>
+                )}
+                {!isEmpty && !bucket.tombstone && bucket.entries && (
+                  <div class="flex items-center gap-1 flex-wrap">
+                    {bucket.entries.map((entry, entryIndex) => (
+                      <div class="flex items-center gap-1">
+                        {mode === 'chaining' && entryIndex > 0 && (
+                          <span class="text-foreground/40 font-mono text-xs">→</span>
+                        )}
+                        <div
+                          class:list={[
+                            'flex items-center gap-1 font-mono text-sm rounded px-2 py-0.5 border bg-content1',
+                            entryIndex === 0 ? 'border-primary/40' : 'border-divider',
+                          ]}
+                        >
+                          <span class="text-primary">"{entry.key}"</span>
+                          <span class="text-foreground/40 text-xs">→</span>
+                          <span class="text-success font-bold">
+                            {typeof entry.value === 'string'
+                              ? `"${entry.value}"`
+                              : entry.value}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                    {mode === 'chaining' && (
+                      <span class="text-foreground/30 font-mono text-xs">→ NULL</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })
+      }
+    </div>
+
+    {
+      Astro.slots.has('default') && (
+        <div class="font-mono text-foreground/70 text-center text-sm border-t border-divider pt-4 mt-5">
+          <slot />
+        </div>
+      )
+    }
+  </div>
+</div>

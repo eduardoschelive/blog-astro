@@ -1,0 +1,158 @@
+---
+import Icon from './Icon.astro'
+import BitBar from './BitBar.astro'
+
+type TypeVariant = 'int' | 'uint' | 'float' | 'complex'
+
+interface TypeEntry {
+  name: string
+  bits: number | 'platform'
+  range?: string
+  precision?: string
+  realPart?: string
+  imagPart?: string
+  alias?: string
+  platformNote?: string
+}
+
+const TYPE_DATA: Record<TypeVariant, TypeEntry[]> = {
+  int: [
+    { name: 'int8', bits: 8, range: '-128  →  127' },
+    { name: 'int16', bits: 16, range: '-32,768  →  32,767' },
+    {
+      name: 'int32',
+      bits: 32,
+      range: '-2,147,483,648  →  2,147,483,647',
+      alias: 'rune',
+    },
+    {
+      name: 'int64',
+      bits: 64,
+      range: '-9,223,372,036,854,775,808  →  9,223,372,036,854,775,807',
+    },
+    {
+      name: 'int',
+      bits: 'platform',
+      range: 'platform-dependent',
+      platformNote:
+        '64-bit systems (Linux, macOS, Windows x64): 64 bits → same range as int64\n32-bit systems: 32 bits → same range as int32\nUse int when you have no specific memory constraints — it is the default choice for most Go code.',
+    },
+  ],
+  uint: [
+    { name: 'uint8', bits: 8, range: '0  →  255', alias: 'byte' },
+    { name: 'uint16', bits: 16, range: '0  →  65,535' },
+    { name: 'uint32', bits: 32, range: '0  →  4,294,967,295' },
+    { name: 'uint64', bits: 64, range: '0  →  18,446,744,073,709,551,615' },
+    {
+      name: 'uint',
+      bits: 'platform',
+      range: 'platform-dependent',
+      platformNote:
+        '64-bit systems (Linux, macOS, Windows x64): 64 bits → same range as uint64\n32-bit systems: 32 bits → same range as uint32\nPrefer uint when you know values are never negative and want the extra range.',
+    },
+  ],
+  float: [
+    { name: 'float32', bits: 32, precision: '~7 significant decimal digits' },
+    {
+      name: 'float64',
+      bits: 64,
+      precision: '~15–16 significant decimal digits',
+    },
+  ],
+  complex: [
+    { name: 'complex64', bits: 64, realPart: 'float32', imagPart: 'float32' },
+    { name: 'complex128', bits: 128, realPart: 'float64', imagPart: 'float64' },
+  ],
+}
+
+interface Props {
+  variant: TypeVariant
+}
+
+const { variant } = Astro.props
+const entries = TYPE_DATA[variant]
+const lastColumn =
+  variant === 'float'
+    ? 'Precision'
+    : variant === 'complex'
+      ? 'Components'
+      : 'Range'
+---
+
+<div class="my-6 rounded-xl border border-content4/20 overflow-hidden">
+  <div
+    class="grid grid-cols-[140px_1fr_1fr] bg-content3/60 border-b border-content4/20 px-4 py-2"
+  >
+    <span
+      class="text-xs font-semibold text-default-400 uppercase tracking-wide"
+      >Type</span
+    >
+    <span
+      class="text-xs font-semibold text-default-400 uppercase tracking-wide"
+      >Size</span
+    >
+    <span
+      class="text-xs font-semibold text-default-400 uppercase tracking-wide"
+      >{lastColumn}</span
+    >
+  </div>
+
+  {
+    entries.map((entry, i) => (
+      <div
+        class:list={[
+          'grid grid-cols-[140px_1fr_1fr] px-4 py-3 items-center gap-2 bg-content2 hover:bg-content3/70 transition-colors duration-150',
+          i !== entries.length - 1 && 'border-b border-content4/15',
+        ]}
+      >
+        <div class="flex items-center gap-2 flex-wrap">
+          <code class="text-sm font-bold text-primary font-mono">
+            {entry.name}
+          </code>
+          {entry.alias && (
+            <span class="inline-flex items-center rounded-full bg-secondary/20 text-secondary text-xs h-5 px-1.5 font-medium">
+              {entry.alias}
+            </span>
+          )}
+        </div>
+
+        <BitBar bits={entry.bits} />
+
+        <div class="text-xs text-default-400 font-mono leading-relaxed flex items-center gap-1.5">
+          {entry.range && entry.bits !== 'platform' && <span>{entry.range}</span>}
+
+          {entry.bits === 'platform' && entry.platformNote && (
+            <span class="tooltip">
+              <span
+                class="tooltip-trigger flex items-center gap-1 text-warning cursor-help"
+                tabindex="0"
+                role="button"
+              >
+                platform-dependent
+                <Icon name="info-circle" size={13} />
+              </span>
+              <span class="tooltip-bubble" role="tooltip">
+                <span class="flex flex-col gap-1.5">
+                  {entry.platformNote.split('\n').map((line) => (
+                    <span class="text-xs leading-relaxed">{line}</span>
+                  ))}
+                </span>
+              </span>
+            </span>
+          )}
+
+          {entry.precision && (
+            <span class="text-success/80">{entry.precision}</span>
+          )}
+          {entry.realPart && entry.imagPart && (
+            <span>
+              real: <span class="text-primary">{entry.realPart}</span>
+              {' · '}
+              imag: <span class="text-primary">{entry.imagPart}</span>
+            </span>
+          )}
+        </div>
+      </div>
+    ))
+  }
+</div>

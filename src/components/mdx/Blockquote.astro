@@ -1,0 +1,18 @@
+---
+import Icon from './Icon.astro'
+---
+
+<blockquote
+  class="my-6 border-l-4 border-l-secondary bg-secondary/5 rounded-r-lg pl-6 pr-4 py-4 relative"
+>
+  <Icon
+    name="quote"
+    size={24}
+    class="absolute -left-3 top-4 text-secondary bg-background rounded-full p-1 shrink-0"
+  />
+  <div
+    class="text-foreground/90 [&>p]:my-2 [&>p:first-child]:mt-0 [&>p:last-child]:mb-0 [&>code]:text-xs"
+  >
+    <slot />
+  </div>
+</blockquote>

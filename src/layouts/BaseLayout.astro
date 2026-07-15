@@ -1,0 +1,23 @@
+---
+import '../styles/global.css'
+
+interface Props {
+  title: string
+  lang: string
+}
+
+const { title, lang } = Astro.props
+---
+
+<!doctype html>
+<html lang={lang} class="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <slot name="head" />
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>

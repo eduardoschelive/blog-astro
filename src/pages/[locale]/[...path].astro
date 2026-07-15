@@ -1,5 +1,7 @@
 ---
 import { getAllRoutes, type PageRoute } from '../../lib/routes'
+import BaseLayout from '../../layouts/BaseLayout.astro'
+import ArticleBody from '../../components/mdx/ArticleBody.astro'
 
 // Single catch-all: translated segments rule out per-page files, so one route
 // dispatches home/categories/about/resources/category/article. An undefined
@@ -16,26 +18,32 @@ type Props = PageRoute
 const route = Astro.props
 const { locale, type, alternates } = route
 
-// Placeholder render; real content/layout/SEO come in later phases.
 let title: string = type
 if (type === 'category' && route.category) title = route.category.data.title
 else if (type === 'article' && route.article) title = route.article.data.title
 ---
 
-<!doctype html>
-<html lang={locale}>
-  <head>
-    <meta charset="utf-8" />
-    <title>{title}</title>
-    <link rel="canonical" href={alternates[locale]} />
+<BaseLayout title={title} lang={locale}>
+  <link slot="head" rel="canonical" href={alternates[locale]} />
+  {
+    (Object.entries(alternates) as [string, string][]).map(([loc, href]) => (
+      <link slot="head" rel="alternate" hreflang={loc} href={href} />
+    ))
+  }
+
+  <main class="mx-auto max-w-3xl px-4 py-10">
     {
-      (Object.entries(alternates) as [string, string][]).map(([loc, href]) => (
-        <link rel="alternate" hreflang={loc} href={href} />
-      ))
+      type === 'article' && route.article ? (
+        <>
+          <h1 class="text-4xl font-bold mb-8">{route.article.data.title}</h1>
+          <ArticleBody entry={route.article} />
+        </>
+      ) : (
+        <>
+          <h1 class="text-4xl font-bold">{title}</h1>
+          <p class="mt-2 text-foreground/70">type: {type} · locale: {locale}</p>
+        </>
+      )
     }
-  </head>
-  <body>
-    <h1>{title}</h1>
-    <p>type: {type} · locale: {locale}</p>
-  </body>
-</html>
+  </main>
+</BaseLayout>
