@@ -2,7 +2,6 @@
 import { defineConfig } from 'astro/config';
 
 import mdx from '@astrojs/mdx';
-import sitemap from '@astrojs/sitemap';
 import vercel from '@astrojs/vercel';
 import tailwindcss from '@tailwindcss/vite';
 import { tokyoNightLight } from './src/shiki/tokyo-night-light.ts';
@@ -15,6 +14,7 @@ export default defineConfig({
   // `/` has no locale; redirect to the default one.
   redirects: {
     '/': '/en-US',
+    '/rss.xml': '/en-US/rss.xml',
   },
   markdown: {
     // Dual theme output; light/dark switch via the `.dark` class in CSS.
@@ -25,7 +25,7 @@ export default defineConfig({
     },
     rehypePlugins: [rehypeLocalizeLinks],
   },
-  integrations: [mdx(), sitemap()],
+  integrations: [mdx()],
   adapter: vercel(),
   vite: {
     plugins: [tailwindcss()],

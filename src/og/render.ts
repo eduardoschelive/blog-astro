@@ -63,7 +63,6 @@ function tree(title: string, subtitle: string) {
               alignItems: 'center',
               justifyContent: 'center',
               gap: 48,
-              zIndex: 1,
             },
             children: [
               { type: 'img', props: { width: 180, height: 180, src: LOGO_URI } },
