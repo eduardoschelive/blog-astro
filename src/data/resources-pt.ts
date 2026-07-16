@@ -1,0 +1,167 @@
+import type { Resource } from './resource.type'
+
+export const resources: Resource[] = [
+  {
+    id: 'carbon',
+    name: 'Carbon',
+    url: 'https://carbon.now.sh',
+    category: 'productivity',
+    pricing: 'free',
+    description: 'Crie e compartilhe imagens bonitas do seu código-fonte.',
+    why: 'Padrão da indústria para compartilhar código em posts, slides e redes sociais. Zero configuração, dezenas de temas, suporta qualquer linguagem — cole, estilize, exporte.',
+    tags: ['code-sharing', 'screenshots', 'apresentação'],
+  },
+  {
+    id: 'ray',
+    name: 'Ray.so',
+    url: 'https://ray.so',
+    category: 'productivity',
+    pricing: 'free',
+    description:
+      'Crie imagens de código mais polidas com gradientes e estilo de janela de editor.',
+    why: 'Feito pela equipe da Vercel, resultado de nível editorial. Boa alternativa ao Carbon quando você quer mais impacto visual em posts e apresentações.',
+    tags: ['code-sharing', 'screenshots', 'design'],
+  },
+  {
+    id: 'transform-tools',
+    name: 'Transform Tools',
+    url: 'https://transform.tools',
+    category: 'productivity',
+    pricing: 'free',
+    description:
+      'Conversor de formatos: JSON para TypeScript, SQL para Prisma, SVG para JSX, YAML para JSON e mais de 30 conversões.',
+    why: 'Uma aba que substitui horas de reescrita manual de schemas, tipos e configurações. Open source e roda inteiramente no browser — sem instalação, sem conta.',
+    tags: ['converter', 'codegen', 'json'],
+  },
+  {
+    id: 'wappalyzer',
+    name: 'Wappalyzer',
+    url: 'https://www.wappalyzer.com',
+    category: 'productivity',
+    pricing: 'freemium',
+    description:
+      'Detecte as tecnologias por trás de qualquer site — frameworks, CDNs, analytics, CMS e mais.',
+    why: 'Revele instantaneamente a stack de um concorrente ou site de referência sem precisar ler o código-fonte. A extensão de browser adiciona um overlay com um clique em qualquer página.',
+    tags: ['tech-detection', 'pesquisa', 'extensão'],
+  },
+  {
+    id: 'jsoncrack',
+    name: 'JSON Crack',
+    url: 'https://jsoncrack.com',
+    category: 'productivity',
+    pricing: 'open-source',
+    description: 'Visualize JSON, YAML, CSV e XML como grafos interativos.',
+    why: 'Torna payloads de API grandes e estruturas de dados aninhadas legíveis de relance. Cole qualquer JSON bruto e obtenha instantaneamente um grafo navegável — sem instalação.',
+    tags: ['json', 'visualização', 'api'],
+  },
+  {
+    id: 'explainshell',
+    name: 'explainshell',
+    url: 'https://explainshell.com',
+    category: 'productivity',
+    pricing: 'free',
+    description:
+      'Cole qualquer comando shell e receba cada flag e argumento explicado a partir da man page.',
+    why: 'Indispensável para entender comandos copiados do Stack Overflow ou de docs sem precisar abrir várias man pages. Funciona também com comandos encadeados com pipes.',
+    tags: ['shell', 'cli', 'aprendizado'],
+  },
+  {
+    id: 'excalidraw',
+    name: 'Excalidraw',
+    url: 'https://excalidraw.com',
+    category: 'design',
+    pricing: 'free',
+    description:
+      'Quadro branco virtual para esboçar diagramas com estilo hand-drawn.',
+    why: 'Zero configuração, roda no browser, exporta SVG/PNG. Padrão de facto para rascunhar arquiteturas, fluxos e ERDs em calls e documentações.',
+    tags: ['diagramas', 'whiteboard', 'arquitetura'],
+  },
+  {
+    id: 'dbdiagram',
+    name: 'dbdiagram.io',
+    url: 'https://dbdiagram.io',
+    category: 'database',
+    pricing: 'freemium',
+    description:
+      'Design de schemas de banco de dados com uma DSL simples — escreve código, vê o diagrama em tempo real.',
+    why: 'Forma mais rápida de desenhar um DER e compartilhar com o time. Exporta diretamente para SQL (PostgreSQL, MySQL e mais) a partir do diagrama.',
+    tags: ['der', 'schema', 'sql'],
+  },
+  {
+    id: 'upstash',
+    name: 'Upstash',
+    url: 'https://upstash.com',
+    category: 'database',
+    pricing: 'freemium',
+    description:
+      'Redis e Kafka serverless com billing por request — sem servidor para gerenciar.',
+    why: 'A forma mais rápida de adicionar cache, rate limiting ou fila em qualquer projeto cloud. Free tier generoso e SDKs para todas as linguagens e runtimes principais.',
+    tags: ['redis', 'kafka', 'serverless'],
+  },
+  {
+    id: 'hoppscotch',
+    name: 'Hoppscotch',
+    url: 'https://hoppscotch.io',
+    category: 'api',
+    pricing: 'open-source',
+    description:
+      'Ecossistema de API leve que roda no browser — REST, GraphQL, WebSocket, SSE.',
+    why: 'Alternativa ao Postman sem instalação, com colaboração em tempo real e self-hostável. Ideal quando o Bruno não é opção, como na máquina de outra pessoa.',
+    tags: ['rest', 'graphql', 'api-testing'],
+  },
+  {
+    id: 'bruno',
+    name: 'Bruno',
+    url: 'https://www.usebruno.com',
+    category: 'api',
+    pricing: 'open-source',
+    description:
+      'Cliente de API Git-friendly que guarda as collections como arquivos locais.',
+    why: 'Alternativa ao Postman sem conta obrigatória nem cloud sync forçado. As collections ficam junto com o código como arquivos simples, totalmente versionáveis pelo Git.',
+    tags: ['rest', 'graphql', 'api-client'],
+  },
+  {
+    id: 'coolify',
+    name: 'Coolify',
+    url: 'https://coolify.io',
+    category: 'devops',
+    pricing: 'open-source',
+    description:
+      'PaaS self-hosted open-source — faça deploy de apps, bancos e serviços no seu próprio VPS.',
+    why: 'Alternativa ao Heroku/Vercel/Netlify que roda na sua própria infraestrutura. Interface visual para deploys com Docker e Nixpacks, com templates de um clique para dezenas de serviços.',
+    tags: ['self-hosted', 'deploy', 'paas'],
+  },
+  {
+    id: 'k6',
+    name: 'k6',
+    url: 'https://k6.io',
+    category: 'testing',
+    pricing: 'open-source',
+    description:
+      'Ferramenta de load testing com scripts em JavaScript e integração nativa com CI/CD.',
+    why: 'Simule centenas de usuários simultâneos com código, não com GUI. Integra com Grafana para visualização de resultados e roda em qualquer pipeline sem fricção.',
+    tags: ['load-testing', 'performance', 'ci'],
+  },
+  {
+    id: 'playwright',
+    name: 'Playwright',
+    url: 'https://playwright.dev',
+    category: 'testing',
+    pricing: 'free',
+    description:
+      'Framework de E2E testing da Microsoft com suporte a Chromium, Firefox e WebKit.',
+    why: 'API moderna com auto-wait nativo (sem sleeps), geração de código por gravação e modo debug visual. Padrão atual para testes de integração em aplicações web.',
+    tags: ['e2e', 'automação', 'browser'],
+  },
+  {
+    id: 'cyberchef',
+    name: 'CyberChef',
+    url: 'https://gchq.github.io/CyberChef',
+    category: 'security',
+    pricing: 'open-source',
+    description:
+      'Canivete suíço para encoding, decoding, hashing e análise de dados no browser.',
+    why: 'Encadeie operações como Base64, AES, SHA, JWT decode, XOR e centenas de outras sem enviar dados para um servidor. Criado pelo GCHQ, roda completamente offline.',
+    tags: ['encoding', 'hashing', 'criptografia'],
+  },
+]

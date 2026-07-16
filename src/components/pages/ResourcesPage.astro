@@ -1,0 +1,144 @@
+---
+import Icon from '../mdx/Icon.astro'
+import { t } from '../../i18n/messages'
+import { resources as enResources } from '../../data/resources-en'
+import { resources as ptResources } from '../../data/resources-pt'
+import type { Locale } from '../../lib/routes'
+
+interface Props {
+  locale: Locale
+}
+
+const { locale } = Astro.props
+const resources = locale === 'pt-BR' ? ptResources : enResources
+
+const categories = [...new Set(resources.map((r) => r.category))].sort()
+const pricings = [...new Set(resources.map((r) => r.pricing))].sort()
+
+const pricingClass: Record<string, string> = {
+  free: 'bg-success/10 text-success',
+  freemium: 'bg-primary/10 text-primary',
+  paid: 'bg-warning/10 text-warning',
+  'open-source': 'bg-secondary/10 text-secondary',
+}
+const selectClass =
+  'rounded-lg border border-divider bg-content2 px-3 py-2 text-sm outline-none focus:border-primary'
+---
+
+<div class="mx-auto max-w-5xl px-4 py-12">
+  <header class="mb-8 max-w-2xl">
+    <h1 class="text-4xl font-bold tracking-tight sm:text-5xl">
+      {t(locale, 'Resources.title')}
+    </h1>
+    <p class="mt-4 text-lg text-foreground/70">{t(locale, 'Resources.subtitle')}</p>
+  </header>
+
+  <div class="mb-8 flex flex-wrap gap-3" id="resource-filters">
+    <input
+      type="text"
+      id="resource-search"
+      placeholder={t(locale, 'Resources.searchPlaceholder')}
+      class:list={[selectClass, 'flex-1 min-w-[200px]']}
+      autocomplete="off"
+    />
+    <select id="resource-category" class={selectClass}>
+      <option value="">{t(locale, 'Resources.filterByCategory')}</option>
+      {
+        categories.map((c) => (
+          <option value={c}>{t(locale, `Resources.category.${c}`)}</option>
+        ))
+      }
+    </select>
+    <select id="resource-pricing" class={selectClass}>
+      <option value="">{t(locale, 'Resources.filterByPricing')}</option>
+      {
+        pricings.map((p) => (
+          <option value={p}>{t(locale, `Resources.pricing.${p}`)}</option>
+        ))
+      }
+    </select>
+  </div>
+
+  <div id="resource-grid" class="grid gap-6 sm:grid-cols-2">
+    {
+      resources.map((r) => (
+        <div
+          class="resource-card flex flex-col rounded-2xl border border-divider/50 bg-content2 p-6 transition-colors hover:border-primary/40"
+          data-category={r.category}
+          data-pricing={r.pricing}
+          data-search={`${r.name} ${r.description} ${r.tags.join(' ')}`.toLowerCase()}
+        >
+          <div class="mb-2 flex items-center justify-between gap-2">
+            <h3 class="text-lg font-bold">{r.name}</h3>
+            <span
+              class:list={[
+                'rounded-full px-2 py-0.5 text-xs font-medium',
+                pricingClass[r.pricing],
+              ]}
+            >
+              {t(locale, `Resources.pricing.${r.pricing}`)}
+            </span>
+          </div>
+          <p class="text-sm text-foreground/70">{r.description}</p>
+
+          <details class="group mt-3">
+            <summary class="cursor-pointer list-none text-sm font-medium text-primary">
+              {t(locale, 'Resources.whyUse')}
+            </summary>
+            <p class="mt-2 text-sm leading-relaxed text-foreground/60">{r.why}</p>
+          </details>
+
+          <div class="mt-4 flex flex-wrap gap-1.5">
+            {r.tags.map((tag) => (
+              <span class="rounded-md bg-content3 px-2 py-0.5 text-xs text-default-400">
+                {tag}
+              </span>
+            ))}
+          </div>
+
+          <a
+            href={r.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="mt-4 inline-flex items-center gap-1 text-sm font-medium text-primary"
+          >
+            {t(locale, 'Resources.visitSite')}
+            <Icon name="arrow-right" size={14} />
+          </a>
+        </div>
+      ))
+    }
+  </div>
+
+  <p id="resource-empty" hidden class="py-12 text-center text-foreground/50">
+    {t(locale, 'Resources.noResults')}
+  </p>
+</div>
+
+<script>
+  const search = document.querySelector<HTMLInputElement>('#resource-search')
+  const category = document.querySelector<HTMLSelectElement>('#resource-category')
+  const pricing = document.querySelector<HTMLSelectElement>('#resource-pricing')
+  const cards = Array.from(document.querySelectorAll<HTMLElement>('.resource-card'))
+  const empty = document.querySelector<HTMLElement>('#resource-empty')
+
+  function apply() {
+    const q = (search?.value ?? '').trim().toLowerCase()
+    const cat = category?.value ?? ''
+    const price = pricing?.value ?? ''
+    let visible = 0
+    for (const card of cards) {
+      const ok =
+        (!q || (card.dataset.search ?? '').includes(q)) &&
+        (!cat || card.dataset.category === cat) &&
+        (!price || card.dataset.pricing === price)
+      card.hidden = !ok
+      if (ok) visible++
+    }
+    if (empty) empty.hidden = visible !== 0
+  }
+
+  search?.addEventListener('input', apply)
+  category?.addEventListener('change', apply)
+  pricing?.addEventListener('change', apply)
+</script>

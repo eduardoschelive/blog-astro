@@ -1,0 +1,88 @@
+---
+import Icon from '../mdx/Icon.astro'
+import { ACCENT_CLASSES, getCategoryAccent } from '../../constants/categoryVisuals'
+import { articleCountLabel, type CategorySummary } from '../../lib/content'
+import { t } from '../../i18n/messages'
+import type { Locale } from '../../lib/routes'
+
+interface Props {
+  category: CategorySummary
+  locale: Locale
+}
+
+const { category, locale } = Astro.props
+const a = ACCENT_CLASSES[getCategoryAccent(category.accentSlug)]
+const preview = category.articles.slice(0, 3)
+---
+
+<div
+  class:list={[
+    'group relative flex flex-col overflow-hidden rounded-2xl border border-divider/50 bg-content2 p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg lg:p-8',
+    a.hoverBorder,
+  ]}
+>
+  <div class="mb-4 flex items-center gap-2">
+    <span class:list={['h-1.5 w-1.5 rounded-full', a.dot]}></span>
+    <span
+      class="font-mono text-[11px] font-medium uppercase tracking-widest text-default-400"
+    >
+      {articleCountLabel(category.articleCount, locale)}
+    </span>
+  </div>
+
+  <a
+    href={category.url}
+    class:list={['mb-2 block text-2xl font-bold tracking-tight lg:text-3xl', a.text]}
+  >
+    {category.title}
+  </a>
+
+  <p class="mb-6 line-clamp-3 text-sm leading-relaxed text-foreground/70 lg:text-base">
+    {category.description}
+  </p>
+
+  {
+    preview.length > 0 && (
+      <>
+        <p
+          class:list={[
+            'mb-3 font-mono text-[11px] font-medium uppercase tracking-widest lg:mb-4',
+            a.text,
+          ]}
+        >
+          {t(locale, 'Categories.startHere')}
+        </p>
+        <div class="mb-2 space-y-1">
+          {preview.map((article) => (
+            <a
+              href={article.url}
+              class="group/item flex items-center gap-4 rounded-lg border border-transparent p-2.5 transition-colors hover:border-divider/40 hover:bg-content3"
+            >
+              <div
+                class:list={[
+                  'flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-mono text-sm font-bold',
+                  a.soft,
+                  a.text,
+                ]}
+              >
+                {article.sequence ?? <Icon name="file-text" size={16} />}
+              </div>
+              <p class="line-clamp-1 flex-1 text-sm font-medium text-foreground/90">
+                {article.title}
+              </p>
+              <Icon name="arrow-right" size={16} class="text-default-400" />
+            </a>
+          ))}
+        </div>
+      </>
+    )
+  }
+
+  <a
+    href={category.url}
+    class:list={['mt-auto inline-flex items-center gap-1 pt-2 text-sm font-medium', a.text]}
+  >
+    {t(locale, 'Categories.viewFullTrail')}
+    <Icon name="arrow-right" size={16} />
+  </a>
+</div>

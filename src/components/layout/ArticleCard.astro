@@ -1,0 +1,82 @@
+---
+import { ACCENT_CLASSES, type AccentColor } from '../../constants/categoryVisuals'
+import {
+  formatDate,
+  readingLabel,
+  type ArticleSummary,
+} from '../../lib/content'
+import type { Locale } from '../../lib/routes'
+
+interface Props {
+  article: ArticleSummary
+  locale: Locale
+  linkText: string
+  accent?: AccentColor
+  total?: number
+}
+
+const { article, locale, linkText, accent = 'primary', total } = Astro.props
+const a = ACCENT_CLASSES[accent]
+const showPos = article.sequence != null && total && total > 0
+---
+
+<article
+  class:list={[
+    'group relative flex h-full flex-col overflow-hidden rounded-2xl border border-divider/50 bg-content2 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg',
+    a.hoverBorder,
+  ]}
+>
+  <a
+    href={article.url}
+    aria-label={`${linkText}: ${article.title}`}
+    class="absolute inset-0 z-10 rounded-2xl"></a>
+
+  <div class="flex flex-1 flex-col gap-4 p-6">
+    <div class="flex items-center justify-between gap-3">
+      <span
+        class:list={[
+          'inline-flex items-center gap-2 font-mono text-[11px] font-medium uppercase tracking-widest',
+          a.text,
+        ]}
+      >
+        <span class:list={['h-1.5 w-1.5 rounded-full', a.dot]}></span>
+        {article.categoryTitle}
+      </span>
+      {
+        showPos && (
+          <span class="font-mono text-[11px] tracking-wider text-default-400">
+            {String(article.sequence).padStart(2, '0')} /{' '}
+            {String(total).padStart(2, '0')}
+          </span>
+        )
+      }
+    </div>
+
+    <h3
+      class:list={[
+        'text-xl font-bold leading-snug tracking-tight line-clamp-2 transition-colors duration-300',
+        a.hoverText,
+      ]}
+    >
+      {article.title}
+    </h3>
+
+    <p class="line-clamp-3 flex-1 text-sm leading-relaxed text-default-400">
+      {article.description}
+    </p>
+
+    <div class="flex items-center gap-2 text-xs text-default-400">
+      <span>{formatDate(article.publishedAt, locale)}</span>
+      <span aria-hidden>·</span>
+      <span>{readingLabel(article.readingMinutes, locale)}</span>
+    </div>
+
+    <span
+      aria-hidden
+      class:list={['inline-flex items-center gap-1 text-sm font-medium', a.text]}
+    >
+      {linkText}
+      <span class="transition-transform duration-300 group-hover:translate-x-1">→</span>
+    </span>
+  </div>
+</article>
