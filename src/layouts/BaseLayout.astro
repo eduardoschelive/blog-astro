@@ -4,6 +4,7 @@ import SearchModal from '../components/search/SearchModal.astro'
 import Seo from '../components/Seo.astro'
 import Header from '../components/layout/Header.astro'
 import Footer from '../components/layout/Footer.astro'
+import ClickSpark from '../components/layout/ClickSpark.astro'
 import type { PageSeo } from '../lib/seo'
 import type { Locale } from '../lib/routes'
 import { SITE_URL, PERSONAL } from '../constants/site'
@@ -42,7 +43,12 @@ const websiteGraph = {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="/apple-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#7aa2f7" />
     <script is:inline>
       ;(function () {
         try {
@@ -64,5 +70,6 @@ const websiteGraph = {
     </div>
     <Footer locale={locale} />
     <SearchModal locale={locale} />
+    <ClickSpark />
   </body>
 </html>

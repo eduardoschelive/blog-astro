@@ -60,7 +60,10 @@ const SKRIPT_LINK = 'https://github.com/SkriptLang/Skript'
       </div>
     </div>
 
-    <div class="relative mx-auto w-full max-w-sm">
+    <div
+      data-tilt
+      class="relative mx-auto w-full max-w-sm [transform-style:preserve-3d] transition-transform duration-300 ease-out will-change-transform"
+    >
       <div
         class="absolute -inset-1 rounded-2xl bg-linear-to-r from-primary via-secondary to-primary opacity-40 blur-lg"
       >
@@ -107,3 +110,19 @@ const SKRIPT_LINK = 'https://github.com/SkriptLang/Skript'
     </div>
   </section>
 </div>
+
+<script>
+  const MAX = 5
+  document.querySelectorAll<HTMLElement>('[data-tilt]').forEach((el) => {
+    if (window.matchMedia('(hover: none)').matches) return
+    el.addEventListener('mousemove', (e) => {
+      const r = el.getBoundingClientRect()
+      const rx = ((e.clientY - r.top - r.height / 2) / (r.height / 2)) * -MAX
+      const ry = ((e.clientX - r.left - r.width / 2) / (r.width / 2)) * MAX
+      el.style.transform = `perspective(1000px) rotateX(${rx}deg) rotateY(${ry}deg)`
+    })
+    el.addEventListener('mouseleave', () => {
+      el.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg)'
+    })
+  })
+</script>

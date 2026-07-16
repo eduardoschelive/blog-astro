@@ -45,6 +45,9 @@ importers:
       '@astrojs/check':
         specifier: ^0.9.9
         version: 0.9.9(prettier@3.9.5)(typescript@5.9.3)
+      '@astrojs/markdown-remark':
+        specifier: 7.2.1
+        version: 7.2.1
       shiki:
         specifier: 4.3.1
         version: 4.3.1

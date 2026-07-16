@@ -4,6 +4,7 @@ import { defineConfig } from 'astro/config';
 import mdx from '@astrojs/mdx';
 import vercel from '@astrojs/vercel';
 import tailwindcss from '@tailwindcss/vite';
+import { unified } from '@astrojs/markdown-remark';
 import { tokyoNightLight } from './src/shiki/tokyo-night-light.ts';
 import { rehypeLocalizeLinks } from './src/plugins/rehype-localize-links.mjs';
 
@@ -23,7 +24,7 @@ export default defineConfig({
       defaultColor: false,
       wrap: false,
     },
-    rehypePlugins: [rehypeLocalizeLinks],
+    processor: unified({ rehypePlugins: [rehypeLocalizeLinks] }),
   },
   integrations: [mdx()],
   adapter: vercel(),
