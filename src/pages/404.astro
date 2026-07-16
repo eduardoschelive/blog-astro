@@ -1,0 +1,33 @@
+---
+import '../styles/global.css'
+---
+
+<!doctype html>
+<html lang="en-US" class="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>404 — Page not found</title>
+    <meta name="robots" content="noindex" />
+    <script is:inline>
+      ;(function () {
+        try {
+          var t = localStorage.getItem('theme') || 'dark'
+          document.documentElement.classList.remove('dark', 'light')
+          document.documentElement.classList.add(t)
+        } catch (e) {}
+      })()
+    </script>
+  </head>
+  <body class="min-h-screen flex flex-col items-center justify-center gap-4 px-4 text-center">
+    <p class="font-mono text-6xl font-bold text-primary">404</p>
+    <h1 class="text-2xl font-bold">Page not found</h1>
+    <a
+      href="/en-US"
+      class="mt-2 inline-flex items-center gap-1.5 rounded-full border border-divider px-5 py-2.5 font-medium transition-colors hover:border-primary hover:text-primary"
+    >
+      Go home
+    </a>
+  </body>
+</html>

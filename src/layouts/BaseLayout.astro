@@ -6,6 +6,7 @@ import Header from '../components/layout/Header.astro'
 import Footer from '../components/layout/Footer.astro'
 import type { PageSeo } from '../lib/seo'
 import type { Locale } from '../lib/routes'
+import { SITE_URL, PERSONAL } from '../constants/site'
 
 interface Props {
   locale: Locale
@@ -14,6 +15,26 @@ interface Props {
 }
 
 const { locale, seo, navAlternates } = Astro.props
+
+const websiteGraph = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'Person',
+      '@id': `${SITE_URL}/#person`,
+      name: PERSONAL.name.full,
+      url: SITE_URL,
+      sameAs: [PERSONAL.social.github, PERSONAL.social.linkedin],
+    },
+    {
+      '@type': 'WebSite',
+      '@id': `${SITE_URL}/#website`,
+      url: SITE_URL,
+      name: `${PERSONAL.name.short} Blog`,
+      publisher: { '@id': `${SITE_URL}/#person` },
+    },
+  ],
+}
 ---
 
 <!doctype html>
@@ -33,6 +54,7 @@ const { locale, seo, navAlternates } = Astro.props
       })()
     </script>
     <Seo locale={locale} {...seo} />
+    <script is:inline type="application/ld+json" set:html={JSON.stringify(websiteGraph)} />
     <slot name="head" />
   </head>
   <body class="min-h-screen flex flex-col">
