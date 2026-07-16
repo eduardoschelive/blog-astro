@@ -1,0 +1,62 @@
+---
+import Icon from '../mdx/Icon.astro'
+---
+
+<button
+  type="button"
+  class="theme-switch p-2 rounded-full text-foreground/70 hover:text-foreground hover:bg-content3 transition-colors cursor-pointer"
+  aria-label="Toggle theme"
+>
+  <Icon name="moon" size={22} class="hidden dark:inline" />
+  <Icon name="sun" size={22} class="inline dark:hidden" />
+</button>
+
+<script>
+  const root = document.documentElement
+
+  function apply(theme: 'dark' | 'light') {
+    root.classList.remove('dark', 'light')
+    root.classList.add(theme)
+    try {
+      localStorage.setItem('theme', theme)
+    } catch {}
+  }
+
+  document.querySelectorAll<HTMLButtonElement>('.theme-switch').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const next = root.classList.contains('dark') ? 'light' : 'dark'
+      const reduce =
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
+        window.matchMedia('(hover: none) and (pointer: coarse)').matches
+
+      if (!document.startViewTransition || reduce) {
+        apply(next)
+        return
+      }
+
+      const transition = document.startViewTransition(() => apply(next))
+      transition.ready.then(() => {
+        const { top, left, width, height } = btn.getBoundingClientRect()
+        const x = left + width / 2
+        const y = top + height / 2
+        const r = Math.hypot(
+          Math.max(left, window.innerWidth - left),
+          Math.max(top, window.innerHeight - top)
+        )
+        root.animate(
+          {
+            clipPath: [
+              `circle(0px at ${x}px ${y}px)`,
+              `circle(${r}px at ${x}px ${y}px)`,
+            ],
+          },
+          {
+            duration: 400,
+            easing: 'ease-in-out',
+            pseudoElement: '::view-transition-new(root)',
+          }
+        )
+      })
+    })
+  })
+</script>

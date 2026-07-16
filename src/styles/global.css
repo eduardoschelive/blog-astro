@@ -2,6 +2,24 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@font-face {
+  font-family: 'Satoshi';
+  src: url('/fonts/Satoshi-Variable-subset.woff2') format('woff2');
+  font-weight: 300 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Fira Code';
+  src: url('/fonts/FiraCode-Variable-subset.woff2') format('woff2');
+  font-weight: 300 700;
+  font-display: swap;
+}
+
+@theme {
+  --font-sans: 'Satoshi', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Fira Code', ui-monospace, monospace;
+}
+
 :root {
   --background: #d5d6db;
   --foreground: #24283b;
@@ -78,14 +96,25 @@
 }
 
 @layer base {
+  html {
+    scroll-behavior: smooth;
+  }
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+    font-family: var(--font-sans);
   }
 
   code,
   pre {
-    font-family: ui-monospace, 'Fira Code', 'Cascadia Code', monospace;
+    font-family: var(--font-mono);
+  }
+
+  /* Let the theme-toggle circular reveal own the transition. */
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+    mix-blend-mode: normal;
   }
 }
 

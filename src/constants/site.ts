@@ -6,4 +6,9 @@ export const PERSONAL = {
     short: 'Eduardo Schelive',
   },
   twitter: '@eduardoschelive',
+  social: {
+    github: 'https://github.com/eduardoschelive',
+    linkedin: 'https://linkedin.com/in/eduardoschelive',
+    email: 'contact@eduardoschelive.com',
+  },
 } as const

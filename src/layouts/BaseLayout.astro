@@ -2,15 +2,18 @@
 import '../styles/global.css'
 import SearchModal from '../components/search/SearchModal.astro'
 import Seo from '../components/Seo.astro'
+import Header from '../components/layout/Header.astro'
+import Footer from '../components/layout/Footer.astro'
 import type { PageSeo } from '../lib/seo'
 import type { Locale } from '../lib/routes'
 
 interface Props {
   locale: Locale
   seo: PageSeo
+  navAlternates: Record<Locale, string>
 }
 
-const { locale, seo } = Astro.props
+const { locale, seo, navAlternates } = Astro.props
 ---
 
 <!doctype html>
@@ -18,11 +21,26 @@ const { locale, seo } = Astro.props
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <script is:inline>
+      ;(function () {
+        try {
+          var t = localStorage.getItem('theme') || 'dark'
+          var d = document.documentElement
+          d.classList.remove('dark', 'light')
+          d.classList.add(t)
+        } catch (e) {}
+      })()
+    </script>
     <Seo locale={locale} {...seo} />
     <slot name="head" />
   </head>
-  <body>
-    <slot />
+  <body class="min-h-screen flex flex-col">
+    <Header locale={locale} alternates={navAlternates} />
+    <div class="flex-1">
+      <slot />
+    </div>
+    <Footer locale={locale} />
     <SearchModal locale={locale} />
   </body>
 </html>

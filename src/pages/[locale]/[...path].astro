@@ -21,7 +21,7 @@ const { locale, type } = route
 const seo = getPageSeo(route)
 ---
 
-<BaseLayout locale={locale} seo={seo}>
+<BaseLayout locale={locale} seo={seo} navAlternates={route.alternates}>
   <main class="mx-auto max-w-3xl px-4 py-10">
     {
       type === 'article' && route.article ? (

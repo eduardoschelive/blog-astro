@@ -1,0 +1,83 @@
+---
+import Icon from '../mdx/Icon.astro'
+import { STATIC_SEGMENTS, type Locale } from '../../lib/routes'
+import { t } from '../../i18n/messages'
+import { PERSONAL } from '../../constants/site'
+
+interface Props {
+  locale: Locale
+}
+
+const { locale } = Astro.props
+const year = new Date().getFullYear()
+
+const links = [
+  { label: t(locale, 'Navbar.home'), href: `/${locale}` },
+  {
+    label: t(locale, 'Navbar.categories'),
+    href: `/${locale}/${STATIC_SEGMENTS.categories[locale]}`,
+  },
+  {
+    label: t(locale, 'Navbar.resources'),
+    href: `/${locale}/${STATIC_SEGMENTS.resources[locale]}`,
+  },
+  { label: t(locale, 'Navbar.about'), href: `/${locale}/${STATIC_SEGMENTS.about[locale]}` },
+]
+
+const social = [
+  { icon: 'brand-github' as const, href: PERSONAL.social.github, label: t(locale, 'Footer.social.github') },
+  { icon: 'brand-linkedin' as const, href: PERSONAL.social.linkedin, label: t(locale, 'Footer.social.linkedin') },
+  { icon: 'mail' as const, href: `mailto:${PERSONAL.social.email}`, label: t(locale, 'Footer.social.email') },
+  { icon: 'rss' as const, href: `/${locale}/rss.xml`, label: t(locale, 'Footer.social.rss') },
+]
+---
+
+<footer class="border-t border-divider mt-16">
+  <div class="mx-auto max-w-5xl px-4 py-12 grid gap-8 sm:grid-cols-3">
+    <div>
+      <div class="flex items-center gap-2 font-bold mb-3">
+        <img src="/logo.svg" alt="" width="24" height="24" />
+        <span>{PERSONAL.name.short}</span>
+      </div>
+      <p class="text-sm text-foreground/70 max-w-xs">{t(locale, 'Footer.bio')}</p>
+    </div>
+
+    <div>
+      <h2 class="font-semibold mb-3">{t(locale, 'Footer.quickLinks')}</h2>
+      <ul class="space-y-2">
+        {
+          links.map((l) => (
+            <li>
+              <a href={l.href} class="text-sm text-foreground/70 hover:text-primary transition-colors">
+                {l.label}
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+
+    <div>
+      <h2 class="font-semibold mb-3">{t(locale, 'Footer.connect')}</h2>
+      <div class="flex gap-2">
+        {
+          social.map((s) => (
+            <a
+              href={s.href}
+              target={s.href.startsWith('http') ? '_blank' : undefined}
+              rel={s.href.startsWith('http') ? 'noopener noreferrer' : undefined}
+              aria-label={s.label}
+              class="p-2 rounded-full border border-divider text-foreground/70 hover:text-primary hover:border-primary transition-colors"
+            >
+              <Icon name={s.icon} size={20} />
+            </a>
+          ))
+        }
+      </div>
+    </div>
+  </div>
+
+  <div class="border-t border-divider py-6 text-center text-sm text-foreground/60">
+    © {year} {PERSONAL.name.full}. {t(locale, 'Footer.copyright')}
+  </div>
+</footer>
