@@ -6,24 +6,42 @@ interface Props {
   title?: string
   icon?: boolean
   triggerClass?: string
+  href?: string
+  hoverOnly?: boolean
+  [key: string]: unknown
 }
 
 const defaultTrigger =
   'text-secondary underline decoration-2 decoration-secondary/40 underline-offset-2 hover:decoration-secondary font-medium cursor-pointer'
 
-const { content, title, icon = true, triggerClass = defaultTrigger } = Astro.props
+const {
+  content,
+  title,
+  icon = true,
+  triggerClass = defaultTrigger,
+  href,
+  hoverOnly = false,
+  ...rest
+} = Astro.props
 const id = `tooltip-${crypto.randomUUID()}`
+const Trigger = href ? 'a' : 'button'
+const triggerProps = href ? { href } : { type: 'button' as const }
 ---
 
-<span class="tooltip-root" data-tooltip>
-  <button
-    type="button"
+<span
+  class="tooltip-root"
+  data-tooltip
+  data-tooltip-hover-only={hoverOnly ? '' : undefined}
+>
+  <Trigger
     class:list={['tooltip-trigger', triggerClass]}
     data-tooltip-trigger
     aria-describedby={id}
+    {...triggerProps}
+    {...rest}
   >
     <slot />
-  </button>
+  </Trigger>
   <span
     id={id}
     role="tooltip"

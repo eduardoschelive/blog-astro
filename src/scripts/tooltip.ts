@@ -51,6 +51,8 @@ function bindTooltip(root: HTMLElement): void {
   const bubble = root.querySelector<HTMLElement>('[data-tooltip-bubble]')
   if (!trigger || !bubble) return
 
+  const hoverOnly = root.hasAttribute('data-tooltip-hover-only')
+
   let openTimer = 0
   let closeTimer = 0
   let overTrigger = false
@@ -112,9 +114,10 @@ function bindTooltip(root: HTMLElement): void {
   trigger.addEventListener('blur', () => {
     if (!overBubble) close()
   })
-  // Touch has no hover/focus intent, so a tap toggles the tooltip.
+  // Touch has no hover/focus intent, so a tap toggles the tooltip — unless the
+  // trigger has its own action (hover-only), where a tap must run that action.
   trigger.addEventListener('click', () => {
-    if (isCoarsePointer()) toggle()
+    if (isCoarsePointer() && !hoverOnly) toggle()
   })
 
   bubble.addEventListener('pointerenter', () => {

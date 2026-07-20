@@ -73,6 +73,7 @@
   "Theme": {
     "dark": "dark",
     "light": "light",
+    "toggle": "Toggle theme",
     "tooltip": {
       "description": "Switch to the {theme} theme"
     }

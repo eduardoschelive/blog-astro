@@ -73,6 +73,7 @@
   "Theme": {
     "dark": "escuro",
     "light": "claro",
+    "toggle": "Alternar tema",
     "tooltip": {
       "description": "Clique aqui para mudar para o modo {theme}"
     }

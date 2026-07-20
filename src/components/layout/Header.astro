@@ -1,6 +1,7 @@
 ---
 import { Icon } from 'astro-icon/components'
 import Dropdown from '@/components/ui/Dropdown.astro'
+import IconButton from '@/components/ui/IconButton.astro'
 import ThemeSwitch from './ThemeSwitch.astro'
 import {
   getCategoryRoutes,
@@ -113,25 +114,25 @@ const iconBtn =
     </div>
 
     <div class="flex items-center gap-0.5">
-      <button type="button" class={iconBtn} data-search-open aria-label="Search">
+      <IconButton label={t(locale, 'Navigation.search.tooltip')} data-search-open>
         <Icon aria-hidden="true" name="tabler:search" size={20} />
-      </button>
-      <a
+      </IconButton>
+      <IconButton
+        label={t(locale, 'Navigation.rss.tooltip')}
         href={`/${locale}/rss.xml`}
-        class={`hidden sm:inline-flex ${iconBtn}`}
-        aria-label="RSS"
+        class="max-sm:hidden"
       >
         <Icon aria-hidden="true" name="tabler:rss" size={20} />
-      </a>
-      <a
+      </IconButton>
+      <IconButton
+        label={t(locale, 'Footer.social.github')}
         href={PERSONAL.social.github}
         target="_blank"
         rel="noopener noreferrer"
-        class={`hidden sm:inline-flex ${iconBtn}`}
-        aria-label="GitHub"
+        class="max-sm:hidden"
       >
         <Icon aria-hidden="true" name="tabler:brand-github" size={20} />
-      </a>
+      </IconButton>
 
       <Dropdown
         align="right"
@@ -153,7 +154,7 @@ const iconBtn =
         >
       </Dropdown>
 
-      <ThemeSwitch />
+      <ThemeSwitch locale={locale} />
 
       <Dropdown
         align="right"

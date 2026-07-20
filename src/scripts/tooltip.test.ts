@@ -56,10 +56,10 @@ function mockPointer(coarse: boolean) {
   })) as unknown as typeof window.matchMedia
 }
 
-function setup({ coarse = false, focusVisible = true } = {}) {
+function setup({ coarse = false, focusVisible = true, hoverOnly = false } = {}) {
   mockPointer(coarse)
   document.body.innerHTML = `
-    <span data-tooltip>
+    <span data-tooltip ${hoverOnly ? 'data-tooltip-hover-only' : ''}>
       <button data-tooltip-trigger aria-describedby="tt">term</button>
       <div id="tt" role="tooltip" popover="manual" data-tooltip-bubble>body</div>
     </span>
@@ -131,6 +131,12 @@ describe('tooltip controller (touch)', () => {
 
   it('ignores taps on non-touch (hover) devices', () => {
     const { trigger, bubble } = setup({ coarse: false })
+    trigger.dispatchEvent(new Event('click'))
+    expect(bubble.dataset.open).toBeUndefined()
+  })
+
+  it('does not toggle on tap when hover-only (icon buttons keep their action)', () => {
+    const { trigger, bubble } = setup({ coarse: true, hoverOnly: true })
     trigger.dispatchEvent(new Event('click'))
     expect(bubble.dataset.open).toBeUndefined()
   })
