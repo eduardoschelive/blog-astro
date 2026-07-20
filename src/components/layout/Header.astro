@@ -1,5 +1,6 @@
 ---
 import Icon from '@/components/mdx/Icon.astro'
+import Dropdown from '@/components/ui/Dropdown.astro'
 import ThemeSwitch from './ThemeSwitch.astro'
 import {
   getCategoryRoutes,
@@ -60,35 +61,32 @@ const iconBtn =
         {nav[0].label}
       </a>
 
-      <details class="hd-dropdown relative">
-        <summary
-          class="flex items-center gap-1 px-3 py-2 rounded-lg hover:bg-content3 transition-colors cursor-pointer list-none"
-        >
+      <Dropdown
+        panelClass="w-64"
+        summaryClass="flex items-center gap-1 px-3 py-2 rounded-lg hover:bg-content3 transition-colors"
+      >
+        <Fragment slot="trigger">
           {nav[1].label}
-          <Icon name="chevron-down" size={16} />
-        </summary>
-        <div
-          class="absolute left-0 mt-2 w-64 rounded-xl border border-divider bg-content1 shadow-xl p-2"
+          <Icon name="chevron-down" size={16} class="dropdown-chevron" />
+        </Fragment>
+        {
+          categories.map((c) => (
+            <a
+              href={c.href}
+              class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-content3 transition-colors"
+            >
+              <Icon name="folder" size={16} class="text-primary" />
+              {c.title}
+            </a>
+          ))
+        }
+        <a
+          href={categoriesHref}
+          class="block px-3 py-2 rounded-lg text-sm text-primary hover:bg-content3 transition-colors"
         >
-          {
-            categories.map((c) => (
-              <a
-                href={c.href}
-                class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-content3 transition-colors"
-              >
-                <Icon name="folder" size={16} class="text-primary" />
-                {c.title}
-              </a>
-            ))
-          }
-          <a
-            href={categoriesHref}
-            class="block px-3 py-2 rounded-lg text-sm text-primary hover:bg-content3 transition-colors"
-          >
-            {t(locale, 'Navbar.viewAllCategories')}
-          </a>
-        </div>
-      </details>
+          {t(locale, 'Navbar.viewAllCategories')}
+        </a>
+      </Dropdown>
 
       <a
         href={nav[2].href}
@@ -125,83 +123,64 @@ const iconBtn =
         <Icon name="brand-github" size={20} />
       </a>
 
-      <details class="hd-dropdown relative hidden sm:block">
-        <summary class={`list-none cursor-pointer ${iconBtn}`} aria-label="Language">
-          <Icon name="world" size={20} />
-        </summary>
-        <div
-          class="absolute right-0 mt-2 w-32 rounded-xl border border-divider bg-content1 shadow-xl p-2"
+      <Dropdown
+        align="right"
+        class="hidden sm:block"
+        summaryClass={iconBtn}
+        panelClass="w-32"
+        ariaLabel="Language"
+      >
+        <Icon name="world" size={20} slot="trigger" />
+        <a
+          href={alternates['en-US']}
+          class="block px-3 py-2 rounded-lg hover:bg-content3 transition-colors"
+          >English</a
         >
-          <a
-            href={alternates['en-US']}
-            class="block px-3 py-2 rounded-lg hover:bg-content3 transition-colors"
-            >English</a
-          >
-          <a
-            href={alternates['pt-BR']}
-            class="block px-3 py-2 rounded-lg hover:bg-content3 transition-colors"
-            >Português</a
-          >
-        </div>
-      </details>
+        <a
+          href={alternates['pt-BR']}
+          class="block px-3 py-2 rounded-lg hover:bg-content3 transition-colors"
+          >Português</a
+        >
+      </Dropdown>
 
       <ThemeSwitch />
 
-      <details class="hd-dropdown md:hidden relative">
-        <summary
-          class={`list-none cursor-pointer ${iconBtn}`}
-          aria-label={t(locale, 'Navbar.openMenu')}
-        >
-          <Icon name="menu-2" size={22} />
-        </summary>
-        <div
-          class="absolute right-0 mt-2 w-60 rounded-xl border border-divider bg-content1 shadow-xl p-2"
-        >
-          {
-            nav.map((item) => (
-              <a
-                href={item.href}
-                class="block px-3 py-2 rounded-lg hover:bg-content3 transition-colors"
-              >
-                {item.label}
-              </a>
-            ))
-          }
-          <div class="my-2 border-t border-divider"></div>
-          <div class="flex items-center gap-1 px-1">
-            <a href={alternates['en-US']} class={iconBtn}>EN</a>
-            <a href={alternates['pt-BR']} class={iconBtn}>PT</a>
-            <a href={`/${locale}/rss.xml`} class={iconBtn} aria-label="RSS">
-              <Icon name="rss" size={20} />
-            </a>
+      <Dropdown
+        align="right"
+        class="md:hidden"
+        summaryClass={iconBtn}
+        panelClass="w-60"
+        ariaLabel={t(locale, 'Navbar.openMenu')}
+      >
+        <Icon name="menu-2" size={22} slot="trigger" />
+        {
+          nav.map((item) => (
             <a
-              href={PERSONAL.social.github}
-              target="_blank"
-              rel="noopener noreferrer"
-              class={iconBtn}
-              aria-label="GitHub"
+              href={item.href}
+              class="block px-3 py-2 rounded-lg hover:bg-content3 transition-colors"
             >
-              <Icon name="brand-github" size={20} />
+              {item.label}
             </a>
-          </div>
+          ))
+        }
+        <div class="my-2 border-t border-divider"></div>
+        <div class="flex items-center gap-1 px-1">
+          <a href={alternates['en-US']} class={iconBtn}>EN</a>
+          <a href={alternates['pt-BR']} class={iconBtn}>PT</a>
+          <a href={`/${locale}/rss.xml`} class={iconBtn} aria-label="RSS">
+            <Icon name="rss" size={20} />
+          </a>
+          <a
+            href={PERSONAL.social.github}
+            target="_blank"
+            rel="noopener noreferrer"
+            class={iconBtn}
+            aria-label="GitHub"
+          >
+            <Icon name="brand-github" size={20} />
+          </a>
         </div>
-      </details>
+      </Dropdown>
     </div>
   </nav>
 </header>
-
-<script>
-  // Close any open header dropdown when clicking outside or pressing Escape.
-  document.addEventListener('click', (e) => {
-    document.querySelectorAll<HTMLDetailsElement>('.hd-dropdown[open]').forEach((d) => {
-      if (!d.contains(e.target as Node)) d.open = false
-    })
-  })
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      document
-        .querySelectorAll<HTMLDetailsElement>('.hd-dropdown[open]')
-        .forEach((d) => (d.open = false))
-    }
-  })
-</script>

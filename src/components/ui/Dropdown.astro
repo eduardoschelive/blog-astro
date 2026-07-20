@@ -1,0 +1,46 @@
+---
+// Accessible, animated dropdown built on native <details>/<summary>. Provide the
+// clickable trigger via the `trigger` slot and the menu items as default slot
+// children. Open/close animation and dismissal live in dropdown.ts + global.css.
+interface Props {
+  align?: 'left' | 'right'
+  summaryClass?: string
+  panelClass?: string
+  ariaLabel?: string
+  class?: string
+}
+
+const {
+  align = 'left',
+  summaryClass = '',
+  panelClass = '',
+  ariaLabel,
+  class: className = '',
+} = Astro.props
+---
+
+<details class:list={['dropdown relative', className]} data-dropdown>
+  <summary
+    class:list={['dropdown-summary list-none cursor-pointer', summaryClass]}
+    aria-label={ariaLabel}
+  >
+    <slot name="trigger" />
+  </summary>
+  <div
+    class:list={[
+      'dropdown-panel absolute z-50 mt-2 rounded-xl border border-divider bg-content1 p-2 shadow-xl',
+      align === 'right' ? 'right-0' : 'left-0',
+      panelClass,
+    ]}
+    data-dropdown-panel
+  >
+    <slot />
+  </div>
+</details>
+
+<script>
+  import { initDropdownGlobals, setupDropdowns } from '@/scripts/dropdown'
+
+  initDropdownGlobals()
+  document.addEventListener('astro:page-load', () => setupDropdowns())
+</script>
