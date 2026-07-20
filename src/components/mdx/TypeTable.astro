@@ -1,5 +1,6 @@
 ---
 import { Icon } from 'astro-icon/components'
+import Tooltip from '@/components/ui/Tooltip.astro'
 import BitBar from './BitBar.astro'
 
 type TypeVariant = 'int' | 'uint' | 'float' | 'complex'
@@ -113,23 +114,14 @@ const lastColumn =
           {entry.range && entry.bits !== 'platform' && <span>{entry.range}</span>}
 
           {entry.bits === 'platform' && entry.platformNote && (
-            <span class="tooltip">
-              <span
-                class="tooltip-trigger flex items-center gap-1 text-warning cursor-help"
-                tabindex="0"
-                role="button"
-              >
-                platform-dependent
-                <Icon aria-hidden="true" name="tabler:info-circle" size={13} />
-              </span>
-              <span class="tooltip-bubble" role="tooltip">
-                <span class="flex flex-col gap-1.5">
-                  {entry.platformNote.split('\n').map((line) => (
-                    <span class="text-xs leading-relaxed">{line}</span>
-                  ))}
-                </span>
-              </span>
-            </span>
+            <Tooltip
+              content={entry.platformNote}
+              icon={false}
+              triggerClass="flex items-center gap-1 text-warning cursor-help"
+            >
+              platform-dependent
+              <Icon aria-hidden="true" name="tabler:info-circle" size={13} />
+            </Tooltip>
           )}
 
           {entry.precision && <span class="text-success/80">{entry.precision}</span>}

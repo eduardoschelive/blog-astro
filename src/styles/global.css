@@ -132,29 +132,3 @@
     }
   }
 }
-
-@layer components {
-  .tooltip {
-    position: relative;
-    display: inline-block;
-  }
-  .tooltip-bubble {
-    position: absolute;
-    bottom: calc(100% + 8px);
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 50;
-    width: max-content;
-    max-width: 20rem;
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transition: opacity 150ms ease;
-    @apply bg-content2/95 backdrop-blur-sm border border-secondary/30 shadow-xl rounded-lg px-4 py-3 text-sm;
-  }
-  .tooltip:hover .tooltip-bubble,
-  .tooltip:focus-within .tooltip-bubble {
-    opacity: 1;
-    visibility: visible;
-  }
-}
