@@ -220,21 +220,6 @@
   }
 }
 
-/* Entrance animation: fade + slide-in from the left. Mirrors the reference
-   hero's framer-motion intro (opacity 0 → 1, translateX(-20px) → 0). Stagger
-   via an inline `animation-delay`. Fully visible when reduced motion is set. */
-@media (prefers-reduced-motion: no-preference) {
-  .anim-in {
-    animation: anim-slide-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
-  }
-  @keyframes anim-slide-in {
-    from {
-      opacity: 0;
-      transform: translateX(-20px);
-    }
-  }
-}
-
 /* Native <dialog> search modal. */
 .search-dialog {
   margin-top: 12vh;
