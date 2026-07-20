@@ -43,6 +43,11 @@ const categories = (await getCategoryRoutes()).map((c) => ({
 const categoriesHref = `/${locale}/${STATIC_SEGMENTS.categories[locale]}`
 const iconBtn =
   'p-2 rounded-full text-foreground/70 hover:text-foreground hover:bg-content3 transition-colors'
+
+const languages = [
+  { code: 'pt-BR', name: t(locale, 'Locale.pt-BR'), href: alternates['pt-BR'] },
+  { code: 'en-US', name: t(locale, 'Locale.en-US'), href: alternates['en-US'] },
+] as const
 ---
 
 <header
@@ -125,28 +130,34 @@ const iconBtn =
         <Icon aria-hidden="true" name="tabler:rss" size={20} />
       </IconButton>
 
+      <ThemeSwitch locale={locale} />
+
       <Dropdown
         align="right"
         class="hidden sm:block"
         summaryClass={iconBtn}
-        panelClass="w-32"
+        panelClass="w-44"
         ariaLabel={t(locale, 'Locale.label')}
         tooltip={t(locale, 'Locale.label')}
       >
         <Icon aria-hidden="true" name="tabler:world" size={20} slot="trigger" />
-        <a
-          href={alternates['en-US']}
-          class="block px-3 py-2 rounded-lg hover:bg-content3 transition-colors"
-          >English</a
-        >
-        <a
-          href={alternates['pt-BR']}
-          class="block px-3 py-2 rounded-lg hover:bg-content3 transition-colors"
-          >Português</a
-        >
+        {
+          languages.map((lang) => (
+            <a
+              href={lang.href}
+              class:list={[
+                'flex items-center justify-between gap-3 rounded-lg px-3 py-2 transition-colors',
+                lang.code === locale ? 'font-medium text-primary' : 'hover:bg-content3',
+              ]}
+            >
+              {lang.name}
+              {lang.code === locale && (
+                <Icon aria-hidden="true" name="tabler:check" size={16} />
+              )}
+            </a>
+          ))
+        }
       </Dropdown>
-
-      <ThemeSwitch locale={locale} />
 
       <Dropdown
         align="right"
