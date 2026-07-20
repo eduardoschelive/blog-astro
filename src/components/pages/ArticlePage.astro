@@ -3,7 +3,6 @@ import ArticleBody from '../mdx/ArticleBody.astro'
 import ArticleCard from '../layout/ArticleCard.astro'
 import Icon from '../mdx/Icon.astro'
 import { getArticlesByCategoryDir, formatDate, readingLabel } from '../../lib/content'
-import { getCategoryAccent } from '../../constants/categoryVisuals'
 import { t } from '../../i18n/messages'
 import { STATIC_SEGMENTS, type PageRoute } from '../../lib/routes'
 import { SITE_URL, PERSONAL } from '../../constants/site'
@@ -26,7 +25,6 @@ const next = index >= 0 && index < siblings.length - 1 ? siblings[index + 1] : n
 const related = siblings.filter((s) => s.url !== currentUrl).slice(0, 3)
 
 const current = siblings[index]
-const accent = getCategoryAccent(categoryDir)
 const readingMinutes = current?.readingMinutes ?? 1
 const categoryTitle = current?.categoryTitle ?? ''
 const categoryUrl = route.alternates[locale].split('/articles/')[0]
@@ -144,7 +142,6 @@ const jsonLd = [
               article={a}
               locale={locale}
               linkText={t(locale, 'Categories.readArticle')}
-              accent={accent}
             />
           ))}
         </div>

@@ -1,7 +1,6 @@
 ---
 import ArticleCard from '../layout/ArticleCard.astro'
 import { getArticlesByCategoryDir, articleCountLabel } from '../../lib/content'
-import { ACCENT_CLASSES, getCategoryAccent } from '../../constants/categoryVisuals'
 import { t } from '../../i18n/messages'
 import type { PageRoute } from '../../lib/routes'
 
@@ -14,14 +13,12 @@ const locale = route.locale
 const category = route.category!
 const categoryDir = route.categoryDir!
 const articles = await getArticlesByCategoryDir(locale, categoryDir)
-const accent = getCategoryAccent(categoryDir)
-const a = ACCENT_CLASSES[accent]
 ---
 
 <div class="mx-auto max-w-5xl px-4 py-12">
   <header class="mb-10 max-w-2xl">
     <div class="mb-3 flex items-center gap-2">
-      <span class:list={['h-1.5 w-1.5 rounded-full', a.dot]}></span>
+      <span class:list={['h-1.5 w-1.5 rounded-full', 'bg-primary']}></span>
       <span
         class="font-mono text-[11px] font-medium uppercase tracking-widest text-default-400"
       >
@@ -40,7 +37,6 @@ const a = ACCENT_CLASSES[accent]
             article={article}
             locale={locale}
             linkText={t(locale, 'Categories.readArticle')}
-            accent={accent}
             total={articles.length}
           />
         ))}

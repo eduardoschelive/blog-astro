@@ -23,7 +23,6 @@ export interface CategorySummary {
   description: string
   slug: string
   url: string
-  accentSlug: string
   articleCount: number
   articles: { title: string; url: string; sequence: number | null }[]
 }
@@ -115,7 +114,6 @@ export async function getCategorySummaries(
       description: c.entry[locale].data.description,
       slug: c.entry[locale].data.slug,
       url: withLocalePrefix(locale, c.path[locale]),
-      accentSlug: c.dir,
       articleCount: articles.length,
       articles: articles.map((a) => ({
         title: a.title,
