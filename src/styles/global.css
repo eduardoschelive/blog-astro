@@ -118,90 +118,6 @@
   }
 }
 
-/* Base markdown elements inside rendered article bodies. Zero-specificity
-   selectors so component-level utilities (e.g. Callout's [&>p]) still win. */
-@layer components {
-  .article-content :where(h1) {
-    @apply text-4xl font-bold my-4;
-  }
-  .article-content :where(h2) {
-    @apply text-3xl font-bold my-6 relative;
-  }
-  .article-content :where(h2)::before {
-    content: '';
-    @apply absolute -left-4 top-0 bottom-0 w-1 bg-primary;
-  }
-  .article-content :where(h3) {
-    @apply text-xl font-bold my-4 text-primary;
-  }
-  .article-content :where(p) {
-    @apply my-4;
-  }
-  .article-content :where(ul) {
-    @apply list-disc list-outside ml-6 my-4 space-y-2 marker:text-primary;
-  }
-  .article-content :where(ol) {
-    @apply list-decimal list-outside ml-6 my-4 space-y-2 marker:text-primary;
-  }
-  .article-content :where(li) {
-    @apply text-foreground/90 pl-2;
-  }
-  .article-content :where(:not(pre) > code) {
-    @apply bg-content2 px-1.5 py-0.5 rounded text-sm;
-  }
-  .article-content :where(a) {
-    @apply text-primary underline underline-offset-2;
-  }
-  .article-content :where(a[data-external])::after {
-    content: ' ↗';
-    @apply no-underline;
-  }
-}
-
-/* Shiki dual-theme: pick light/dark token colors by the `.dark` class. */
-.astro-code,
-.astro-code span {
-  color: var(--shiki-light);
-}
-:where(.dark) .astro-code,
-:where(.dark) .astro-code span {
-  color: var(--shiki-dark);
-}
-
-/* Code block chrome: line numbers via CSS counters. */
-.code-block code {
-  font-feature-settings:
-    'liga' 1,
-    'calt' 1;
-  counter-reset: step;
-  counter-increment: step 0;
-  display: block;
-  line-height: 0.8;
-}
-.code-block pre {
-  overflow-x: auto;
-  overflow-y: clip;
-  margin: 0;
-  padding-bottom: 0.3em;
-  background: transparent;
-}
-.code-block code .line {
-  display: block;
-  white-space: pre;
-  padding: 0.2em 0;
-}
-.code-block code .line::before {
-  content: counter(step);
-  counter-increment: step;
-  width: 2.5rem;
-  margin-right: 1rem;
-  display: inline-block;
-  text-align: right;
-  color: rgba(115, 138, 148, 0.4);
-  user-select: none;
-  vertical-align: top;
-}
-
 /* Scroll-reveal via CSS scroll-driven animations. Progressive: content is
    fully visible where unsupported or when reduced motion is requested. */
 @supports (animation-timeline: view()) {
@@ -217,29 +133,6 @@
         transform: translateY(24px);
       }
     }
-  }
-}
-
-/* Native <dialog> search modal. */
-.search-dialog {
-  margin-top: 12vh;
-  margin-inline: auto;
-  margin-bottom: auto;
-  padding: 0;
-  border: none;
-  background: transparent;
-}
-.search-dialog::backdrop {
-  background: rgb(0 0 0 / 0.5);
-  backdrop-filter: blur(4px);
-}
-.search-dialog[open] {
-  animation: search-in 0.2s ease-out;
-}
-@keyframes search-in {
-  from {
-    opacity: 0;
-    transform: translateY(-12px);
   }
 }
 

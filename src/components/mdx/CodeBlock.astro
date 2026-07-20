@@ -121,3 +121,47 @@ const btn =
   }
   document.addEventListener('astro:page-load', initCodeBlocks)
 </script>
+
+<style is:global>
+  .astro-code,
+  .astro-code span {
+    color: var(--shiki-light);
+  }
+  :where(.dark) .astro-code,
+  :where(.dark) .astro-code span {
+    color: var(--shiki-dark);
+  }
+
+  .code-block code {
+    font-feature-settings:
+      'liga' 1,
+      'calt' 1;
+    counter-reset: step;
+    counter-increment: step 0;
+    display: block;
+    line-height: 0.8;
+  }
+  .code-block pre {
+    overflow-x: auto;
+    overflow-y: clip;
+    margin: 0;
+    padding-bottom: 0.3em;
+    background: transparent;
+  }
+  .code-block code .line {
+    display: block;
+    white-space: pre;
+    padding: 0.2em 0;
+  }
+  .code-block code .line::before {
+    content: counter(step);
+    counter-increment: step;
+    width: 2.5rem;
+    margin-right: 1rem;
+    display: inline-block;
+    text-align: right;
+    color: rgba(115, 138, 148, 0.4);
+    user-select: none;
+    vertical-align: top;
+  }
+</style>

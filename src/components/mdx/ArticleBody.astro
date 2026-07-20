@@ -37,3 +37,43 @@ const components = {
 <div class="article-content">
   <Content components={components} />
 </div>
+
+<style is:global>
+  @reference '../../styles/global.css';
+
+  .article-content :where(h1) {
+    @apply text-4xl font-bold my-4;
+  }
+  .article-content :where(h2) {
+    @apply text-3xl font-bold my-6 relative;
+  }
+  .article-content :where(h2)::before {
+    content: '';
+    @apply absolute -left-4 top-0 bottom-0 w-1 bg-primary;
+  }
+  .article-content :where(h3) {
+    @apply text-xl font-bold my-4 text-primary;
+  }
+  .article-content :where(p) {
+    @apply my-4;
+  }
+  .article-content :where(ul) {
+    @apply list-disc list-outside ml-6 my-4 space-y-2 marker:text-primary;
+  }
+  .article-content :where(ol) {
+    @apply list-decimal list-outside ml-6 my-4 space-y-2 marker:text-primary;
+  }
+  .article-content :where(li) {
+    @apply text-foreground/90 pl-2;
+  }
+  .article-content :where(:not(pre) > code) {
+    @apply bg-content2 px-1.5 py-0.5 rounded text-sm;
+  }
+  .article-content :where(a) {
+    @apply text-primary underline underline-offset-2;
+  }
+  .article-content :where(a[data-external])::after {
+    content: ' ↗';
+    @apply no-underline;
+  }
+</style>

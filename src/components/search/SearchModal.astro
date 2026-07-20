@@ -423,3 +423,27 @@ const kbd = 'rounded-md border border-divider bg-content2 px-1.5 py-0.5 font-mon
     }
   }
 </script>
+
+<style>
+  .search-dialog {
+    margin-top: 12vh;
+    margin-inline: auto;
+    margin-bottom: auto;
+    padding: 0;
+    border: none;
+    background: transparent;
+  }
+  .search-dialog::backdrop {
+    background: rgb(0 0 0 / 0.5);
+    backdrop-filter: blur(4px);
+  }
+  .search-dialog[open] {
+    animation: search-in 0.2s ease-out;
+  }
+  @keyframes search-in {
+    from {
+      opacity: 0;
+      transform: translateY(-12px);
+    }
+  }
+</style>
