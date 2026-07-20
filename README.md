@@ -1,43 +1,88 @@
-# Astro Starter Kit: Minimal
+# blog-astro
 
-```sh
-pnpm create astro@latest -- --template minimal
+Personal blog and technical writing of Eduardo Schelive — bilingual (en-US /
+pt-BR), statically generated with [Astro](https://astro.build), deployed to
+Vercel. Zero client-side framework: every page is `.astro` + small vanilla
+`<script>` islands.
+
+## Stack
+
+| Concern        | Choice                                                        |
+| -------------- | ------------------------------------------------------------- |
+| Framework      | Astro 7 (`output: 'static'`), Vercel adapter                  |
+| Content        | MDX via content collections (`glob` loader, Zod schemas)      |
+| Styling        | Tailwind CSS v4 (Vite plugin), CSS design tokens, Tokyo Night |
+| Search         | MiniSearch over a build-time JSON index                       |
+| Code highlight | Shiki dual-theme (light/dark)                                 |
+| OG images      | satori + resvg, rendered at build                             |
+| Tooling        | Prettier, ESLint (flat), Vitest, lefthook                     |
+
+## Commands
+
+All commands run from the project root (Node ≥ 22.12, pnpm):
+
+| Command          | Action                                   |
+| ---------------- | ---------------------------------------- |
+| `pnpm install`   | Install dependencies (sets up git hooks) |
+| `pnpm dev`       | Dev server at `localhost:4321`           |
+| `pnpm build`     | Production build to `./dist/`            |
+| `pnpm preview`   | Preview the production build locally     |
+| `pnpm typecheck` | `astro check` (types + templates)        |
+| `pnpm test`      | Run the Vitest suite                     |
+| `pnpm lint`      | ESLint                                   |
+| `pnpm format`    | Prettier write                           |
+
+`pnpm build`, `lint`, `format:check`, `typecheck`, and `test` all run in CI
+(`.github/workflows/ci.yml`); a lefthook pre-commit hook formats and lints
+staged files.
+
+## Content
+
+Content lives at the repository root (not `src/`), one folder per topic with a
+parallel file per locale:
+
+```
+content/
+├── categories/<category>/{en-US,pt-BR}.mdx
+└── articles/<category>/<n.slug>/{en-US,pt-BR}.mdx
 ```
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+A leading numeric prefix on article folders (e.g. `2.arrays`) only sets ordering
+and is dropped from the URL. Frontmatter is validated by Zod schemas in
+[`src/content.config.ts`](src/content.config.ts) (`title`, `slug`,
+`publishedAt`, …). Both locales of a topic must exist.
 
-## 🚀 Project Structure
+## i18n routing
 
-Inside of your Astro project, you'll see the following folders and files:
+Routing is fully translated and lives in [`src/lib/routes.ts`](src/lib/routes.ts),
+with the shared, dependency-free constants in
+[`src/constants/i18n.ts`](src/constants/i18n.ts):
 
-```text
-/
-├── public/
-├── src/
-│   └── pages/
-│       └── index.astro
-└── package.json
-```
+- Every URL carries a locale prefix — `/en-US/...`, `/pt-BR/...`. `/` redirects
+  to the default locale.
+- URL segments are translated (`categories`/`categorias`,
+  `articles`/`artigos`) and slugs come from frontmatter.
+- A single catch-all page, `src/pages/[locale]/[...path].astro`, resolves the
+  route table and dispatches to the right page component.
 
-Astro looks for `.astro` or `.md` files in the `src/pages/` directory. Each page is exposed as a route based on its file name.
+UI strings are keyed in [`src/i18n/`](src/i18n) and read through a type-safe
+`t(locale, key)` helper — a mistyped key is a compile-time error.
 
-There's nothing special about `src/components/`, but that's where we like to put any Astro/React/Vue/Svelte/Preact components.
+## How key pieces are built
 
-Any static assets, like images, can be placed in the `public/` directory.
+- **Search index** — `src/pages/search/[locale].json.ts` emits
+  `/search/<locale>.json` at build time from the content collections (logic in
+  [`src/lib/search.ts`](src/lib/search.ts)). No separate generation step; the
+  client fetches and indexes it with MiniSearch on first open.
+- **OG images** — `src/pages/[...ogRoute].png.ts` renders one PNG per route via
+  satori/resvg ([`src/og/render.ts`](src/og/render.ts)).
+- **RSS & sitemap** — per-locale RSS (`src/pages/[locale]/rss.xml.ts`) and a
+  hand-rolled sitemap with `hreflang` alternates
+  ([`src/pages/sitemap.xml.ts`](src/pages/sitemap.xml.ts)).
 
-## 🧞 Commands
+## Conventions
 
-All commands are run from the root of the project, from a terminal:
-
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `pnpm install`             | Installs dependencies                            |
-| `pnpm dev`             | Starts local dev server at `localhost:4321`      |
-| `pnpm build`           | Build your production site to `./dist/`          |
-| `pnpm preview`         | Preview your build locally, before deploying     |
-| `pnpm astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `pnpm astro -- --help` | Get help using the Astro CLI                     |
-
-## 👀 Want to learn more?
-
-Feel free to check [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
+- Import from `@/` (mapped to `src/`) for cross-directory imports; `./` for
+  siblings.
+- Comments explain _why_, not _what_.
+- Site/author constants live in [`src/constants/`](src/constants).
