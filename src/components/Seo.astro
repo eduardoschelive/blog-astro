@@ -1,6 +1,7 @@
 ---
-import type { Locale } from '../lib/routes'
-import { PERSONAL, SITE_URL } from '../constants/site'
+import type { Locale } from '@/lib/routes'
+import { PERSONAL, SITE_URL } from '@/constants/site'
+import { OG_WIDTH, OG_HEIGHT } from '@/constants/og'
 
 interface Props {
   locale: Locale
@@ -58,17 +59,15 @@ const robots = noIndex
 <meta property="og:description" content={description} />
 <meta property="og:site_name" content={siteName} />
 <meta property="og:image" content={ogImage} />
-<meta property="og:image:width" content="1200" />
-<meta property="og:image:height" content="630" />
+<meta property="og:image:width" content={String(OG_WIDTH)} />
+<meta property="og:image:height" content={String(OG_HEIGHT)} />
 {
   ogType === 'article' && (
     <>
       {publishedTime && (
         <meta property="article:published_time" content={publishedTime} />
       )}
-      {modifiedTime && (
-        <meta property="article:modified_time" content={modifiedTime} />
-      )}
+      {modifiedTime && <meta property="article:modified_time" content={modifiedTime} />}
       {tags.map((tag) => (
         <meta property="article:tag" content={tag} />
       ))}
@@ -81,4 +80,13 @@ const robots = noIndex
 <meta name="twitter:description" content={description} />
 <meta name="twitter:creator" content={PERSONAL.twitter} />
 <meta name="twitter:image" content={ogImage} />
-{SITE_URL && <link rel="alternate" type="application/rss+xml" title={siteName} href={`${SITE_URL}/${locale}/rss.xml`} />}
+{
+  SITE_URL && (
+    <link
+      rel="alternate"
+      type="application/rss+xml"
+      title={siteName}
+      href={`${SITE_URL}/${locale}/rss.xml`}
+    />
+  )
+}

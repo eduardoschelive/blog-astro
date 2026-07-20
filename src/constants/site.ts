@@ -5,6 +5,7 @@ export const PERSONAL = {
     full: 'Eduardo Guiraldelli Schelive',
     short: 'Eduardo Schelive',
   },
+  role: 'Software Engineer',
   twitter: '@eduardoschelive',
   social: {
     github: 'https://github.com/eduardoschelive',

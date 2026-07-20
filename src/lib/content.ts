@@ -3,13 +3,17 @@ import {
   getCategoryRoutes,
   withLocalePrefix,
   removeSequencePrefix,
+  type ArticleRoute,
   type Locale,
 } from './routes'
+
+const WORDS_PER_MINUTE = 200
 
 export interface ArticleSummary {
   title: string
   description: string
   url: string
+  categoryDir: string
   categoryTitle: string
   categorySlug: string
   publishedAt: string
@@ -31,9 +35,9 @@ function readingMinutes(body: string): number {
   const text = body
     .replace(/```[\s\S]*?```/g, '')
     .replace(/<[^>]+>/g, ' ')
-    .replace(/[#>*_`~\-]/g, ' ')
+    .replace(/[#>*_`~-]/g, ' ')
   const words = text.split(/\s+/).filter(Boolean).length
-  return Math.max(1, Math.round(words / 200))
+  return Math.max(1, Math.round(words / WORDS_PER_MINUTE))
 }
 
 function sequenceOf(dir: string): number | null {
@@ -41,35 +45,43 @@ function sequenceOf(dir: string): number | null {
   return m ? Number(m[1]) : null
 }
 
-export async function getArticleSummaries(
-  locale: Locale
-): Promise<ArticleSummary[]> {
+function buildSummary(
+  route: ArticleRoute,
+  locale: Locale,
+  categoryTitle: string,
+  categorySlug: string
+): ArticleSummary {
+  const entry = route.entry[locale]
+  return {
+    title: entry.data.title,
+    description: entry.data.description ?? '',
+    url: withLocalePrefix(locale, route.path[locale]),
+    categoryDir: route.categoryDir,
+    categoryTitle,
+    categorySlug,
+    publishedAt: entry.data.publishedAt,
+    updatedAt: entry.data.updatedAt,
+    sequence: sequenceOf(route.dir),
+    readingMinutes: readingMinutes(entry.body ?? ''),
+  }
+}
+
+export async function getArticleSummaries(locale: Locale): Promise<ArticleSummary[]> {
   const categories = await getCategoryRoutes()
   const catTitle = new Map(categories.map((c) => [c.dir, c.entry[locale].data.title]))
-  const catSlug = new Map(
-    categories.map((c) => [c.dir, c.entry[locale].data.slug])
-  )
+  const catSlug = new Map(categories.map((c) => [c.dir, c.entry[locale].data.slug]))
 
   const routes = await getArticleRoutes()
-  const summaries = routes.map((r) => {
-    const entry = r.entry[locale]
-    return {
-      title: entry.data.title,
-      description: entry.data.description ?? '',
-      url: withLocalePrefix(locale, r.path[locale]),
-      categoryTitle: catTitle.get(r.categoryDir) ?? '',
-      categorySlug: catSlug.get(r.categoryDir) ?? r.categoryDir,
-      publishedAt: entry.data.publishedAt,
-      updatedAt: entry.data.updatedAt,
-      sequence: sequenceOf(r.dir),
-      readingMinutes: readingMinutes(entry.body ?? ''),
-      categoryDir: r.categoryDir,
-    }
-  })
-
-  return summaries.sort(
-    (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
-  )
+  return routes
+    .map((r) =>
+      buildSummary(
+        r,
+        locale,
+        catTitle.get(r.categoryDir) ?? '',
+        catSlug.get(r.categoryDir) ?? r.categoryDir
+      )
+    )
+    .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())
 }
 
 export async function getArticlesByCategoryDir(
@@ -84,26 +96,11 @@ export async function getArticlesByCategoryDir(
 
   return routes
     .filter((r) => r.categoryDir === categoryDir)
-    .map((r) => {
-      const entry = r.entry[locale]
-      return {
-        title: entry.data.title,
-        description: entry.data.description ?? '',
-        url: withLocalePrefix(locale, r.path[locale]),
-        categoryTitle: catTitle,
-        categorySlug: catSlug,
-        publishedAt: entry.data.publishedAt,
-        updatedAt: entry.data.updatedAt,
-        sequence: sequenceOf(r.dir),
-        readingMinutes: readingMinutes(entry.body ?? ''),
-      }
-    })
+    .map((r) => buildSummary(r, locale, catTitle, catSlug))
     .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0))
 }
 
-export async function getCategorySummaries(
-  locale: Locale
-): Promise<CategorySummary[]> {
+export async function getCategorySummaries(locale: Locale): Promise<CategorySummary[]> {
   const categories = await getCategoryRoutes()
   const out: CategorySummary[] = []
 

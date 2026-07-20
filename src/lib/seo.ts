@@ -1,6 +1,6 @@
 import type { PageRoute, Locale } from './routes'
-import { SITE_URL, PERSONAL } from '../constants/site'
-import { t } from '../i18n/messages'
+import { SITE_URL, PERSONAL } from '@/constants/site'
+import { t } from '@/i18n/messages'
 
 const HOME_KEYWORDS = [
   'Eduardo Schelive',
@@ -48,7 +48,7 @@ export function getPageSeo(route: PageRoute): PageSeo {
         keywords: HOME_KEYWORDS,
         ogType: 'website',
         ogTitle: PERSONAL.name.short,
-        ogSubtitle: 'Software Engineer',
+        ogSubtitle: PERSONAL.role,
       }
     case 'about':
       return {
@@ -58,7 +58,7 @@ export function getPageSeo(route: PageRoute): PageSeo {
         keywords: [],
         ogType: 'website',
         ogTitle: PERSONAL.name.full,
-        ogSubtitle: 'Software Engineer',
+        ogSubtitle: PERSONAL.role,
       }
     case 'categories':
       return {
@@ -78,7 +78,7 @@ export function getPageSeo(route: PageRoute): PageSeo {
         keywords: [],
         ogType: 'website',
         ogTitle: PERSONAL.name.short,
-        ogSubtitle: 'Software Engineer',
+        ogSubtitle: PERSONAL.role,
       }
     case 'category': {
       const c = route.category!.data
