@@ -1,33 +1,83 @@
 ---
-import '../styles/global.css'
+import '@/styles/global.css'
+import HeadTags from '@/components/HeadTags.astro'
+import { LOCALES, DEFAULT_LOCALE } from '@/constants/i18n'
+import { STATIC_SEGMENTS } from '@/lib/routes'
+import { t } from '@/i18n/messages'
+
+// A static 404 is served for any unmatched path across every locale, so it
+// can't be pre-rendered per locale. We ship the default locale's copy for
+// crawlers/no-JS and let a tiny inline script localize from the URL prefix.
+const strings = Object.fromEntries(
+  LOCALES.map((locale) => [
+    locale,
+    {
+      title: t(locale, 'NotFound.title'),
+      description: t(locale, 'NotFound.description'),
+      goHome: t(locale, 'NotFound.goHome'),
+      browseArticles: t(locale, 'NotFound.browseArticles'),
+      home: `/${locale}`,
+      articles: `/${locale}/${STATIC_SEGMENTS.categories[locale]}`,
+    },
+  ])
+)
+const fallback = strings[DEFAULT_LOCALE]
+const actionClass =
+  'inline-flex items-center gap-1.5 rounded-full border border-divider px-5 py-2.5 font-medium transition-colors hover:border-primary hover:text-primary'
 ---
 
 <!doctype html>
-<html lang="en-US" class="dark">
+<html lang={DEFAULT_LOCALE} class="dark">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <title>404 — Page not found</title>
+    <HeadTags />
+    <title>404 — {fallback.title}</title>
     <meta name="robots" content="noindex" />
-    <script is:inline>
+    <script is:inline define:vars={{ strings, fallback: DEFAULT_LOCALE }}>
       ;(function () {
-        try {
-          var t = localStorage.getItem('theme') || 'dark'
-          document.documentElement.classList.remove('dark', 'light')
-          document.documentElement.classList.add(t)
-        } catch (e) {}
+        const path = location.pathname
+        const byPath = Object.keys(strings).find(
+          (l) => path === '/' + l || path.indexOf('/' + l + '/') === 0
+        )
+        const byNav = (navigator.language || '').toLowerCase().startsWith('pt')
+          ? 'pt-BR'
+          : null
+        const locale = byPath || byNav || fallback
+        const s = strings[locale] || strings[fallback]
+
+        document.documentElement.lang = locale
+        document.title = '404 — ' + s.title
+
+        const setText = (id, text) => {
+          const el = document.getElementById(id)
+          if (el) el.textContent = text
+        }
+        const setLink = (id, href, text) => {
+          const el = document.getElementById(id)
+          if (el) {
+            el.setAttribute('href', href)
+            el.textContent = text
+          }
+        }
+        setText('nf-title', s.title)
+        setText('nf-desc', s.description)
+        setLink('nf-home', s.home, s.goHome)
+        setLink('nf-articles', s.articles, s.browseArticles)
       })()
     </script>
   </head>
-  <body class="min-h-screen flex flex-col items-center justify-center gap-4 px-4 text-center">
-    <p class="font-mono text-6xl font-bold text-primary">404</p>
-    <h1 class="text-2xl font-bold">Page not found</h1>
-    <a
-      href="/en-US"
-      class="mt-2 inline-flex items-center gap-1.5 rounded-full border border-divider px-5 py-2.5 font-medium transition-colors hover:border-primary hover:text-primary"
-    >
-      Go home
-    </a>
+  <body
+    class="min-h-screen flex flex-col items-center justify-center gap-4 px-4 text-center"
+  >
+    <main class="flex flex-col items-center gap-4">
+      <p class="font-mono text-6xl font-bold text-primary">404</p>
+      <h1 id="nf-title" class="text-2xl font-bold">{fallback.title}</h1>
+      <p id="nf-desc" class="max-w-md text-foreground/70">{fallback.description}</p>
+      <div class="mt-2 flex flex-wrap items-center justify-center gap-3">
+        <a id="nf-home" href={fallback.home} class={actionClass}>{fallback.goHome}</a>
+        <a id="nf-articles" href={fallback.articles} class={actionClass}>
+          {fallback.browseArticles}
+        </a>
+      </div>
+    </main>
   </body>
 </html>
