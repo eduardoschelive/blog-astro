@@ -1,8 +1,3 @@
-// Client controller for the <Dropdown> component. Native <details> toggles
-// instantly, so closing is intercepted to play an exit animation before the
-// `open` attribute is removed; opening rides the CSS animation on `[open]`.
-// Outside-click and Escape close any open dropdown.
-
 const ATTR_BOUND = 'data-dropdown-bound'
 const ATTR_CLOSING = 'data-closing'
 const CLOSE_FALLBACK_MS = 250
@@ -44,7 +39,6 @@ function bindDropdown(details: HTMLDetailsElement): void {
 
   const summary = details.querySelector('summary')
   summary?.addEventListener('click', (event) => {
-    // Let the opening click through; intercept the closing click so it animates.
     if (details.open) {
       event.preventDefault()
       closeDropdown(details)

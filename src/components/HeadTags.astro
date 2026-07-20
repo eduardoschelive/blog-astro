@@ -1,9 +1,3 @@
----
-// Shared document head: charset/viewport, icons, PWA manifest, theme color, and
-// the render-blocking theme-init script. Used by BaseLayout and the standalone
-// 404 page so the two never drift.
----
-
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="icon" href="/favicon.ico" sizes="32x32" />
@@ -13,8 +7,6 @@
 <link rel="manifest" href="/manifest.webmanifest" />
 <meta name="theme-color" content="#7aa2f7" />
 <script is:inline>
-  // Apply the persisted theme before paint to avoid a flash; re-apply after
-  // view-transition swaps (no-op on pages without the ClientRouter).
   ;(function () {
     function applyTheme() {
       try {

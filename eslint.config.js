@@ -20,13 +20,8 @@ export default [
   prettier,
   {
     rules: {
-      // TypeScript and `astro check` own undefined-symbol resolution; the core
-      // rule only produces false positives on types and platform globals.
       'no-undef': 'off',
       'no-empty': ['error', { allowEmptyCatch: true }],
-      // Client `<script>` blocks are type-checked by `astro check`; ESLint's
-      // script pass misreads TS generics (`el.querySelectorAll<T>(...)`) as
-      // comparison statements, so this stylistic rule only misfires here.
       '@typescript-eslint/no-unused-expressions': 'off',
       '@typescript-eslint/no-unused-vars': [
         'error',

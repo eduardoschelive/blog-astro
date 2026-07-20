@@ -6,10 +6,6 @@ import {
   type Locale,
 } from './routes'
 
-// Client-side search (MiniSearch) is fed a static JSON index per locale, built
-// at request time by the /search/[locale].json endpoint. Routes/URLs are reused
-// from the routing layer so this never re-derives localized paths.
-
 export interface SearchSection {
   h: string | null
   t: string | null
@@ -42,8 +38,6 @@ export interface SearchIndex {
   articles: SearchArticle[]
 }
 
-// Only this many characters of each section reach the index; anything longer is
-// noise for fuzzy title/heading search and just bloats the payload.
 const SECTION_CONTENT_LIMIT = 800
 
 function slugify(text: string): string {
@@ -76,8 +70,6 @@ function cleanText(markdown: string): string {
     .trim()
 }
 
-// Split a markdown body into a leading section plus one section per heading,
-// each carrying a unique anchor id matching the rendered heading.
 export function extractSections(body: string): SearchSection[] {
   const headingRegex = /^(#{1,4})\s+(.+)$/gm
   const matches = [...body.matchAll(headingRegex)]
