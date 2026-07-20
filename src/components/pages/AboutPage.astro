@@ -112,17 +112,20 @@ const SKRIPT_LINK = 'https://github.com/SkriptLang/Skript'
 </div>
 
 <script>
-  const MAX = 5
-  document.querySelectorAll<HTMLElement>('[data-tilt]').forEach((el) => {
-    if (window.matchMedia('(hover: none)').matches) return
-    el.addEventListener('mousemove', (e) => {
-      const r = el.getBoundingClientRect()
-      const rx = ((e.clientY - r.top - r.height / 2) / (r.height / 2)) * -MAX
-      const ry = ((e.clientX - r.left - r.width / 2) / (r.width / 2)) * MAX
-      el.style.transform = `perspective(1000px) rotateX(${rx}deg) rotateY(${ry}deg)`
+  function initTilt() {
+    const MAX = 5
+    document.querySelectorAll<HTMLElement>('[data-tilt]').forEach((el) => {
+      if (window.matchMedia('(hover: none)').matches) return
+      el.addEventListener('mousemove', (e) => {
+        const r = el.getBoundingClientRect()
+        const rx = ((e.clientY - r.top - r.height / 2) / (r.height / 2)) * -MAX
+        const ry = ((e.clientX - r.left - r.width / 2) / (r.width / 2)) * MAX
+        el.style.transform = `perspective(1000px) rotateX(${rx}deg) rotateY(${ry}deg)`
+      })
+      el.addEventListener('mouseleave', () => {
+        el.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg)'
+      })
     })
-    el.addEventListener('mouseleave', () => {
-      el.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg)'
-    })
-  })
+  }
+  document.addEventListener('astro:page-load', initTilt)
 </script>

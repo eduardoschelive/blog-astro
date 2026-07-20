@@ -22,41 +22,42 @@ import Icon from '../mdx/Icon.astro'
     } catch {}
   }
 
-  document.querySelectorAll<HTMLButtonElement>('.theme-switch').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const next = root.classList.contains('dark') ? 'light' : 'dark'
-      const reduce =
-        window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
-        window.matchMedia('(hover: none) and (pointer: coarse)').matches
+  document.addEventListener('click', (e) => {
+    const btn = (e.target as Element).closest<HTMLButtonElement>('.theme-switch')
+    if (!btn) return
 
-      if (!document.startViewTransition || reduce) {
-        apply(next)
-        return
-      }
+    const next = root.classList.contains('dark') ? 'light' : 'dark'
+    const reduce =
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
+      window.matchMedia('(hover: none) and (pointer: coarse)').matches
 
-      const transition = document.startViewTransition(() => apply(next))
-      transition.ready.then(() => {
-        const { top, left, width, height } = btn.getBoundingClientRect()
-        const x = left + width / 2
-        const y = top + height / 2
-        const r = Math.hypot(
-          Math.max(left, window.innerWidth - left),
-          Math.max(top, window.innerHeight - top)
-        )
-        root.animate(
-          {
-            clipPath: [
-              `circle(0px at ${x}px ${y}px)`,
-              `circle(${r}px at ${x}px ${y}px)`,
-            ],
-          },
-          {
-            duration: 400,
-            easing: 'ease-in-out',
-            pseudoElement: '::view-transition-new(root)',
-          }
-        )
-      })
+    if (!document.startViewTransition || reduce) {
+      apply(next)
+      return
+    }
+
+    const transition = document.startViewTransition(() => apply(next))
+    transition.ready.then(() => {
+      const { top, left, width, height } = btn.getBoundingClientRect()
+      const x = left + width / 2
+      const y = top + height / 2
+      const r = Math.hypot(
+        Math.max(left, window.innerWidth - left),
+        Math.max(top, window.innerHeight - top)
+      )
+      root.animate(
+        {
+          clipPath: [
+            `circle(0px at ${x}px ${y}px)`,
+            `circle(${r}px at ${x}px ${y}px)`,
+          ],
+        },
+        {
+          duration: 400,
+          easing: 'ease-in-out',
+          pseudoElement: '::view-transition-new(root)',
+        }
+      )
     })
   })
 </script>

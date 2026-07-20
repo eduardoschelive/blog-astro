@@ -129,8 +129,27 @@ const kbd = 'rounded-md border border-divider bg-content2 px-1.5 py-0.5 font-mon
   const FILE_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2"/><path d="M9 9l1 0"/><path d="M9 13l6 0"/><path d="M9 17l6 0"/></svg>'
 
-  const dialog = document.querySelector<HTMLDialogElement>('.search-dialog')
-  if (dialog) init(dialog)
+  let current: {
+    open: () => void
+    close: () => void
+    isOpen: () => boolean
+  } | null = null
+
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault()
+      if (!current) return
+      current.isOpen() ? current.close() : current.open()
+    }
+  })
+  document.addEventListener('click', (e) => {
+    if ((e.target as Element).closest('[data-search-open]')) current?.open()
+  })
+
+  document.addEventListener('astro:page-load', () => {
+    const dialog = document.querySelector<HTMLDialogElement>('.search-dialog')
+    if (dialog) init(dialog)
+  })
 
   function init(dialog: HTMLDialogElement) {
     const locale = dialog.dataset.locale || 'en-US'
@@ -188,15 +207,8 @@ const kbd = 'rounded-md border border-divider bg-content2 px-1.5 py-0.5 font-mon
       resultsEl.innerHTML = ''
     }
 
-    document.addEventListener('keydown', (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault()
-        dialog.open ? close() : open()
-      }
-    })
-    document
-      .querySelectorAll('[data-search-open]')
-      .forEach((el) => el.addEventListener('click', open))
+    current = { open, close, isOpen: () => dialog.open }
+
     closeBtn.addEventListener('click', close)
     dialog.addEventListener('click', (e) => {
       if (e.target === dialog) close()

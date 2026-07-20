@@ -38,6 +38,7 @@ const btn =
 </div>
 
 <script>
+  function initCodeBlocks() {
   const EXT: Record<string, string> = {
     typescript: 'ts', ts: 'ts', tsx: 'tsx',
     javascript: 'js', js: 'js', jsx: 'jsx', mjs: 'mjs', cjs: 'cjs',
@@ -104,4 +105,6 @@ const btn =
       })
     }
   })
+  }
+  document.addEventListener('astro:page-load', initCodeBlocks)
 </script>

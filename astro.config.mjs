@@ -12,6 +12,7 @@ import { rehypeLocalizeLinks } from './src/plugins/rehype-localize-links.mjs';
 export default defineConfig({
   site: 'https://www.eduardoschelive.com',
   output: 'static',
+  prefetch: { prefetchAll: true, defaultStrategy: 'hover' },
   // `/` has no locale; redirect to the default one.
   redirects: {
     '/': '/en-US',

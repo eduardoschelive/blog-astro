@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css'
+import { ClientRouter } from 'astro:transitions'
 import SearchModal from '../components/search/SearchModal.astro'
 import Seo from '../components/Seo.astro'
 import Header from '../components/layout/Header.astro'
@@ -51,14 +52,19 @@ const websiteGraph = {
     <meta name="theme-color" content="#7aa2f7" />
     <script is:inline>
       ;(function () {
-        try {
-          var t = localStorage.getItem('theme') || 'dark'
-          var d = document.documentElement
-          d.classList.remove('dark', 'light')
-          d.classList.add(t)
-        } catch (e) {}
+        function applyTheme() {
+          try {
+            var t = localStorage.getItem('theme') || 'dark'
+            var d = document.documentElement
+            d.classList.remove('dark', 'light')
+            d.classList.add(t)
+          } catch (e) {}
+        }
+        applyTheme()
+        document.addEventListener('astro:after-swap', applyTheme)
       })()
     </script>
+    <ClientRouter />
     <Seo locale={locale} {...seo} />
     <script is:inline type="application/ld+json" set:html={JSON.stringify(websiteGraph)} />
     <slot name="head" />
