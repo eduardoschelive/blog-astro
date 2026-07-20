@@ -124,22 +124,14 @@ const iconBtn =
       >
         <Icon aria-hidden="true" name="tabler:rss" size={20} />
       </IconButton>
-      <IconButton
-        label={t(locale, 'Footer.social.github')}
-        href={PERSONAL.social.github}
-        target="_blank"
-        rel="noopener noreferrer"
-        class="max-sm:hidden"
-      >
-        <Icon aria-hidden="true" name="tabler:brand-github" size={20} />
-      </IconButton>
 
       <Dropdown
         align="right"
         class="hidden sm:block"
         summaryClass={iconBtn}
         panelClass="w-32"
-        ariaLabel="Language"
+        ariaLabel={t(locale, 'Locale.label')}
+        tooltip={t(locale, 'Locale.label')}
       >
         <Icon aria-hidden="true" name="tabler:world" size={20} slot="trigger" />
         <a
@@ -180,15 +172,6 @@ const iconBtn =
           <a href={alternates['pt-BR']} class={iconBtn}>PT</a>
           <a href={`/${locale}/rss.xml`} class={iconBtn} aria-label="RSS">
             <Icon aria-hidden="true" name="tabler:rss" size={20} />
-          </a>
-          <a
-            href={PERSONAL.social.github}
-            target="_blank"
-            rel="noopener noreferrer"
-            class={iconBtn}
-            aria-label="GitHub"
-          >
-            <Icon aria-hidden="true" name="tabler:brand-github" size={20} />
           </a>
         </div>
       </Dropdown>

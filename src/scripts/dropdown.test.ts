@@ -5,6 +5,7 @@ import {
   closeAllDropdowns,
   setupDropdowns,
   initDropdownGlobals,
+  syncDropdownActive,
 } from './dropdown'
 
 function mockMotion(reduce: boolean): void {
@@ -103,6 +104,18 @@ describe('global dismissal', () => {
     initDropdownGlobals()
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
     expect(details.open).toBe(false)
+  })
+})
+
+describe('syncDropdownActive', () => {
+  it('flags <html> active only while a dropdown is open', () => {
+    makeDropdown(true)
+    syncDropdownActive()
+    expect(document.documentElement.classList.contains('dropdown-active')).toBe(true)
+
+    document.body.innerHTML = ''
+    syncDropdownActive()
+    expect(document.documentElement.classList.contains('dropdown-active')).toBe(false)
   })
 })
 

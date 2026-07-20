@@ -8,6 +8,7 @@ interface Props {
   triggerClass?: string
   href?: string
   hoverOnly?: boolean
+  variant?: 'rich' | 'label'
   [key: string]: unknown
 }
 
@@ -21,11 +22,17 @@ const {
   triggerClass = defaultTrigger,
   href,
   hoverOnly = false,
+  variant = 'rich',
   ...rest
 } = Astro.props
 const id = `tooltip-${crypto.randomUUID()}`
 const Trigger = href ? 'a' : 'button'
 const triggerProps = href ? { href } : { type: 'button' as const }
+
+const bubbleClass =
+  variant === 'label'
+    ? 'tooltip-bubble max-w-[min(16rem,calc(100vw-1.5rem))] rounded-md border border-divider bg-content3 px-2.5 py-1.5 text-xs font-medium text-foreground shadow-lg'
+    : 'tooltip-bubble max-w-[min(20rem,calc(100vw-1.5rem))] rounded-lg border border-secondary/30 bg-content2/95 px-4 py-3 text-sm shadow-xl backdrop-blur-sm'
 ---
 
 <span
@@ -42,31 +49,37 @@ const triggerProps = href ? { href } : { type: 'button' as const }
   >
     <slot />
   </Trigger>
-  <span
-    id={id}
-    role="tooltip"
-    popover="manual"
-    data-tooltip-bubble
-    class="tooltip-bubble max-w-[min(20rem,calc(100vw-1.5rem))] rounded-lg border border-secondary/30 bg-content2/95 px-4 py-3 text-sm shadow-xl backdrop-blur-sm"
-  >
-    <span class="flex gap-2">
-      {
-        icon && (
+  <span id={id} role="tooltip" popover="manual" data-tooltip-bubble class={bubbleClass}>
+    {
+      variant === 'label' ? (
+        <span class="flex items-center gap-1.5">
           <Icon
             aria-hidden="true"
             name="tabler:info-circle"
-            size={16}
-            class="mt-0.5 shrink-0 text-secondary"
+            size={14}
+            class="shrink-0 text-default-400"
           />
-        )
-      }
-      <span class="flex flex-col gap-1.5">
-        {title && <span class="text-sm font-semibold text-secondary">{title}</span>}
-        <span class="whitespace-pre-line leading-relaxed text-foreground/90">
-          {content}
+          <span class="whitespace-pre-line">{content}</span>
         </span>
-      </span>
-    </span>
+      ) : (
+        <span class="flex gap-2">
+          {icon && (
+            <Icon
+              aria-hidden="true"
+              name="tabler:info-circle"
+              size={16}
+              class="mt-0.5 shrink-0 text-secondary"
+            />
+          )}
+          <span class="flex flex-col gap-1.5">
+            {title && <span class="text-sm font-semibold text-secondary">{title}</span>}
+            <span class="whitespace-pre-line leading-relaxed text-foreground/90">
+              {content}
+            </span>
+          </span>
+        </span>
+      )
+    }
   </span>
 </span>
 
@@ -89,6 +102,9 @@ const triggerProps = href ? { href } : { type: 'button' as const }
     background: none;
     padding: 0;
   }
+</style>
+
+<style is:global>
   .tooltip-bubble {
     position: fixed;
     inset: auto;

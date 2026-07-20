@@ -33,6 +33,13 @@ export function closeAllDropdowns(root: ParentNode = document): void {
     .forEach(closeDropdown)
 }
 
+// While a dropdown is open the page is dimmed and its scroll is locked so the
+// menu keeps focus; both are driven by the `dropdown-active` class on <html>.
+export function syncDropdownActive(): void {
+  const anyOpen = Boolean(document.querySelector('[data-dropdown][open]'))
+  document.documentElement.classList.toggle('dropdown-active', anyOpen)
+}
+
 function bindDropdown(details: HTMLDetailsElement): void {
   if (details.hasAttribute(ATTR_BOUND)) return
   details.setAttribute(ATTR_BOUND, '')
@@ -44,6 +51,7 @@ function bindDropdown(details: HTMLDetailsElement): void {
       closeDropdown(details)
     }
   })
+  details.addEventListener('toggle', syncDropdownActive)
 }
 
 export function setupDropdowns(root: ParentNode = document): void {

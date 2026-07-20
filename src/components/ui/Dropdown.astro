@@ -1,9 +1,12 @@
 ---
+import { Icon } from 'astro-icon/components'
+
 interface Props {
   align?: 'left' | 'right'
   summaryClass?: string
   panelClass?: string
   ariaLabel?: string
+  tooltip?: string
   class?: string
 }
 
@@ -12,14 +15,24 @@ const {
   summaryClass = '',
   panelClass = '',
   ariaLabel,
+  tooltip,
   class: className = '',
 } = Astro.props
+
+const tooltipId = tooltip ? `dropdown-tip-${crypto.randomUUID()}` : undefined
 ---
 
-<details class:list={['dropdown relative', className]} data-dropdown>
+<details
+  class:list={['dropdown relative', className]}
+  data-dropdown
+  data-tooltip={tooltip ? '' : undefined}
+  data-tooltip-hover-only={tooltip ? '' : undefined}
+>
   <summary
     class:list={['dropdown-summary list-none cursor-pointer', summaryClass]}
     aria-label={ariaLabel}
+    data-tooltip-trigger={tooltip ? '' : undefined}
+    aria-describedby={tooltipId}
   >
     <slot name="trigger" />
   </summary>
@@ -33,13 +46,37 @@ const {
   >
     <slot />
   </div>
+  {
+    tooltip && (
+      <span
+        id={tooltipId}
+        role="tooltip"
+        popover="manual"
+        data-tooltip-bubble
+        class="tooltip-bubble flex items-center gap-1.5 rounded-md border border-divider bg-content3 px-2.5 py-1.5 text-xs font-medium text-foreground shadow-lg"
+      >
+        <Icon
+          aria-hidden="true"
+          name="tabler:info-circle"
+          size={14}
+          class="shrink-0 text-default-400"
+        />
+        {tooltip}
+      </span>
+    )
+  }
 </details>
 
 <script>
   import { initDropdownGlobals, setupDropdowns } from '@/scripts/dropdown'
+  import { initTooltipGlobals, setupTooltips } from '@/scripts/tooltip'
 
   initDropdownGlobals()
-  document.addEventListener('astro:page-load', () => setupDropdowns())
+  initTooltipGlobals()
+  document.addEventListener('astro:page-load', () => {
+    setupDropdowns()
+    setupTooltips()
+  })
 </script>
 
 <style>
@@ -72,5 +109,27 @@ const {
         transform: translateY(-6px) scale(0.98);
       }
     }
+  }
+</style>
+
+<style is:global>
+  html.dropdown-active {
+    overflow: hidden;
+  }
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    background: rgb(0 0 0 / 0.4);
+    opacity: 0;
+    visibility: hidden;
+    transition:
+      opacity 0.2s ease,
+      visibility 0.2s ease;
+  }
+  html.dropdown-active body::after {
+    opacity: 1;
+    visibility: visible;
   }
 </style>

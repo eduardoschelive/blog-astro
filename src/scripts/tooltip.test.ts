@@ -141,6 +141,14 @@ describe('tooltip controller (touch)', () => {
     expect(bubble.dataset.open).toBeUndefined()
   })
 
+  it('hover-only closes on click so the trigger action can take over', () => {
+    const { trigger, bubble } = setup({ hoverOnly: true, focusVisible: true })
+    trigger.dispatchEvent(new Event('focus'))
+    expect(bubble.dataset.open).toBe('true')
+    trigger.dispatchEvent(new Event('click'))
+    expect(bubble.dataset.open).toBeUndefined()
+  })
+
   it('closes when tapping outside', () => {
     const { trigger, bubble } = setup({ coarse: true })
     trigger.dispatchEvent(new Event('click'))
