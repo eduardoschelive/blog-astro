@@ -1,14 +1,14 @@
 ---
-import Icon from '../mdx/Icon.astro'
+import Icon from '@/components/mdx/Icon.astro'
 import {
   getArticleSummaries,
   getCategorySummaries,
   formatDate,
   readingLabel,
-} from '../../lib/content'
-import { STATIC_SEGMENTS, type Locale } from '../../lib/routes'
-import { t } from '../../i18n/messages'
-import { PERSONAL } from '../../constants/site'
+} from '@/lib/content'
+import { STATIC_SEGMENTS, type Locale } from '@/lib/routes'
+import { t } from '@/i18n/messages'
+import { PERSONAL } from '@/constants/site'
 
 interface Props {
   locale: Locale

@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro'
-import { getAllRoutes, type PageRoute, type Locale } from '../lib/routes'
-import { SITE_URL } from '../constants/site'
+import { getAllRoutes, type PageRoute, type Locale } from '@/lib/routes'
+import { SITE_URL } from '@/constants/site'
 
 const META: Record<PageRoute['type'], { priority: string; changefreq: string }> = {
   home: { priority: '1.0', changefreq: 'weekly' },
@@ -28,8 +28,7 @@ function urlEntry(route: PageRoute): string {
   ]
   const links = alts
     .map(
-      ([lang, href]) =>
-        `<xhtml:link rel="alternate" hreflang="${lang}" href="${href}"/>`
+      ([lang, href]) => `<xhtml:link rel="alternate" hreflang="${lang}" href="${href}"/>`
     )
     .join('')
   return `<url><loc>${loc}</loc>${

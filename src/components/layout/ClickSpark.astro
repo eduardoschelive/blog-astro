@@ -12,7 +12,11 @@
 <script>
   const canvas = document.getElementById('click-spark') as HTMLCanvasElement
   const context = canvas?.getContext('2d')
-  if (canvas && context && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  if (
+    canvas &&
+    context &&
+    !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  ) {
     const cv: HTMLCanvasElement = canvas
     const ctx: CanvasRenderingContext2D = context
     const COLOR = '#7aa2f7'

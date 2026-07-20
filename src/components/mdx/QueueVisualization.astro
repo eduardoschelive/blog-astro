@@ -22,12 +22,8 @@ const displayItems = outgoing ? items.slice(1) : [...items]
         outgoing && outgoingItem !== null && outgoingItem !== undefined && (
           <>
             <div class="border-2 border-primary/30 rounded-lg px-6 py-3 text-center opacity-40 bg-content2">
-              <div class="text-primary text-xs font-semibold font-mono mb-1">
-                front
-              </div>
-              <div class="text-success text-xl font-bold font-mono">
-                {outgoingItem}
-              </div>
+              <div class="text-primary text-xs font-semibold font-mono mb-1">front</div>
+              <div class="text-success text-xl font-bold font-mono">{outgoingItem}</div>
             </div>
             <div class="text-primary/50 text-2xl">←</div>
           </>
@@ -39,9 +35,7 @@ const displayItems = outgoing ? items.slice(1) : [...items]
       >
         {
           displayItems.length === 0 ? (
-            <div class="text-foreground/30 font-mono text-sm italic px-4 py-2">
-              empty
-            </div>
+            <div class="text-foreground/30 font-mono text-sm italic px-4 py-2">empty</div>
           ) : (
             displayItems.map((item, index) => {
               const isFront = index === 0
@@ -89,9 +83,7 @@ const displayItems = outgoing ? items.slice(1) : [...items]
               <div class="text-warning text-xs font-semibold font-mono mb-1">
                 incoming
               </div>
-              <div class="text-success text-xl font-bold font-mono">
-                {incoming}
-              </div>
+              <div class="text-success text-xl font-bold font-mono">{incoming}</div>
             </div>
           </>
         )

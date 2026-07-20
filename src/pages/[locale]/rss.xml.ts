@@ -6,9 +6,9 @@ import {
   getCategoryRoutes,
   withLocalePrefix,
   type Locale,
-} from '../../lib/routes'
-import { t } from '../../i18n/messages'
-import { SITE_URL } from '../../constants/site'
+} from '@/lib/routes'
+import { t } from '@/i18n/messages'
+import { SITE_URL } from '@/constants/site'
 
 const MAX_ARTICLES = 50
 

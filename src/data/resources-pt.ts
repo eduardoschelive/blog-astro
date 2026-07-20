@@ -71,8 +71,7 @@ export const resources: Resource[] = [
     url: 'https://excalidraw.com',
     category: 'design',
     pricing: 'free',
-    description:
-      'Quadro branco virtual para esboçar diagramas com estilo hand-drawn.',
+    description: 'Quadro branco virtual para esboçar diagramas com estilo hand-drawn.',
     why: 'Zero configuração, roda no browser, exporta SVG/PNG. Padrão de facto para rascunhar arquiteturas, fluxos e ERDs em calls e documentações.',
     tags: ['diagramas', 'whiteboard', 'arquitetura'],
   },

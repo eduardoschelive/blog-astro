@@ -61,9 +61,7 @@ const { title, buckets, hashKey, hashSlot, mode = 'chaining' } = Astro.props
                   borderClass,
                 ]}
               >
-                {isEmpty && (
-                  <span class="text-foreground/30 font-mono text-sm">—</span>
-                )}
+                {isEmpty && <span class="text-foreground/30 font-mono text-sm">—</span>}
                 {bucket.tombstone && (
                   <span class="text-warning/60 font-mono text-xs line-through">
                     deleted

@@ -1,14 +1,14 @@
 ---
-import Icon from '../mdx/Icon.astro'
+import Icon from '@/components/mdx/Icon.astro'
 import ThemeSwitch from './ThemeSwitch.astro'
 import {
   getCategoryRoutes,
   STATIC_SEGMENTS,
   withLocalePrefix,
   type Locale,
-} from '../../lib/routes'
-import { t } from '../../i18n/messages'
-import { PERSONAL } from '../../constants/site'
+} from '@/lib/routes'
+import { t } from '@/i18n/messages'
+import { PERSONAL } from '@/constants/site'
 
 interface Props {
   locale: Locale
@@ -27,7 +27,10 @@ const nav = [
     label: t(locale, 'Navbar.resources'),
     href: `/${locale}/${STATIC_SEGMENTS.resources[locale]}`,
   },
-  { label: t(locale, 'Navbar.about'), href: `/${locale}/${STATIC_SEGMENTS.about[locale]}` },
+  {
+    label: t(locale, 'Navbar.about'),
+    href: `/${locale}/${STATIC_SEGMENTS.about[locale]}`,
+  },
 ]
 
 const categories = (await getCategoryRoutes()).map((c) => ({
@@ -50,7 +53,10 @@ const iconBtn =
     </a>
 
     <div class="hidden md:flex items-center gap-1">
-      <a href={nav[0].href} class="px-3 py-2 rounded-lg hover:bg-content3 transition-colors">
+      <a
+        href={nav[0].href}
+        class="px-3 py-2 rounded-lg hover:bg-content3 transition-colors"
+      >
         {nav[0].label}
       </a>
 
@@ -84,10 +90,16 @@ const iconBtn =
         </div>
       </details>
 
-      <a href={nav[2].href} class="px-3 py-2 rounded-lg hover:bg-content3 transition-colors">
+      <a
+        href={nav[2].href}
+        class="px-3 py-2 rounded-lg hover:bg-content3 transition-colors"
+      >
         {nav[2].label}
       </a>
-      <a href={nav[3].href} class="px-3 py-2 rounded-lg hover:bg-content3 transition-colors">
+      <a
+        href={nav[3].href}
+        class="px-3 py-2 rounded-lg hover:bg-content3 transition-colors"
+      >
         {nav[3].label}
       </a>
     </div>
@@ -136,7 +148,10 @@ const iconBtn =
       <ThemeSwitch />
 
       <details class="hd-dropdown md:hidden relative">
-        <summary class={`list-none cursor-pointer ${iconBtn}`} aria-label={t(locale, 'Navbar.openMenu')}>
+        <summary
+          class={`list-none cursor-pointer ${iconBtn}`}
+          aria-label={t(locale, 'Navbar.openMenu')}
+        >
           <Icon name="menu-2" size={22} />
         </summary>
         <div
@@ -159,7 +174,13 @@ const iconBtn =
             <a href={`/${locale}/rss.xml`} class={iconBtn} aria-label="RSS">
               <Icon name="rss" size={20} />
             </a>
-            <a href={PERSONAL.social.github} target="_blank" rel="noopener noreferrer" class={iconBtn} aria-label="GitHub">
+            <a
+              href={PERSONAL.social.github}
+              target="_blank"
+              rel="noopener noreferrer"
+              class={iconBtn}
+              aria-label="GitHub"
+            >
               <Icon name="brand-github" size={20} />
             </a>
           </div>

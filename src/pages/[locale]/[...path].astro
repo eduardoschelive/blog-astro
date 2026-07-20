@@ -1,13 +1,13 @@
 ---
-import { getAllRoutes, type PageRoute } from '../../lib/routes'
-import { getPageSeo } from '../../lib/seo'
-import BaseLayout from '../../layouts/BaseLayout.astro'
-import HomePage from '../../components/pages/HomePage.astro'
-import CategoriesPage from '../../components/pages/CategoriesPage.astro'
-import CategoryPage from '../../components/pages/CategoryPage.astro'
-import ArticlePage from '../../components/pages/ArticlePage.astro'
-import AboutPage from '../../components/pages/AboutPage.astro'
-import ResourcesPage from '../../components/pages/ResourcesPage.astro'
+import { getAllRoutes, type PageRoute } from '@/lib/routes'
+import { getPageSeo } from '@/lib/seo'
+import BaseLayout from '@/layouts/BaseLayout.astro'
+import HomePage from '@/components/pages/HomePage.astro'
+import CategoriesPage from '@/components/pages/CategoriesPage.astro'
+import CategoryPage from '@/components/pages/CategoryPage.astro'
+import ArticlePage from '@/components/pages/ArticlePage.astro'
+import AboutPage from '@/components/pages/AboutPage.astro'
+import ResourcesPage from '@/components/pages/ResourcesPage.astro'
 
 // Single catch-all: translated segments rule out per-page files, so one route
 // dispatches home/categories/about/resources/category/article. An undefined

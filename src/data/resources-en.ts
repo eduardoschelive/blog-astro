@@ -17,8 +17,7 @@ export const resources: Resource[] = [
     url: 'https://ray.so',
     category: 'productivity',
     pricing: 'free',
-    description:
-      'Create polished code images with gradients and editor window styling.',
+    description: 'Create polished code images with gradients and editor window styling.',
     why: 'Built by the Vercel team, produces editorial-level visuals. A great Carbon alternative when you want more visual impact for posts and presentations.',
     tags: ['code-sharing', 'screenshots', 'design'],
   },
@@ -114,8 +113,7 @@ export const resources: Resource[] = [
     url: 'https://www.usebruno.com',
     category: 'api',
     pricing: 'open-source',
-    description:
-      'Git-friendly API client that stores collections as plain local files.',
+    description: 'Git-friendly API client that stores collections as plain local files.',
     why: 'Postman alternative with no mandatory account or forced cloud sync. Collections live alongside your code as plain files, fully versionable and shareable via Git.',
     tags: ['rest', 'graphql', 'api-client'],
   },

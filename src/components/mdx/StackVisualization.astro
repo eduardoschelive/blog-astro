@@ -22,9 +22,7 @@ const itemsToShow = outgoing ? displayItems.slice(1) : displayItems
         outgoing && displayItems.length > 0 && (
           <>
             <div class="border-2 border-warning/30 rounded-lg px-8 py-3 text-center opacity-40 min-w-40 bg-content2">
-              <div class="text-warning text-xs font-semibold font-mono mb-1">
-                top
-              </div>
+              <div class="text-warning text-xs font-semibold font-mono mb-1">top</div>
               <div class="text-success text-xl font-bold font-mono">
                 {displayItems[0]}
               </div>
@@ -41,9 +39,7 @@ const itemsToShow = outgoing ? displayItems.slice(1) : displayItems
               <div class="text-primary text-xs font-semibold font-mono mb-1">
                 incoming
               </div>
-              <div class="text-success text-xl font-bold font-mono">
-                {incoming}
-              </div>
+              <div class="text-success text-xl font-bold font-mono">{incoming}</div>
             </div>
             <div class="text-primary/60 text-2xl my-1">↓</div>
           </>
@@ -63,9 +59,7 @@ const itemsToShow = outgoing ? displayItems.slice(1) : displayItems
                   isTop ? 'bg-content2 border-warning' : 'bg-content2 border-divider',
                 ]}
               >
-                {isTop && (
-                  <div class="text-warning text-xs font-semibold mb-1">top</div>
-                )}
+                {isTop && <div class="text-warning text-xs font-semibold mb-1">top</div>}
                 <div
                   class:list={[
                     'text-xl font-bold',

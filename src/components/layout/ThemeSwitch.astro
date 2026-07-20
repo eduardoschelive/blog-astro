@@ -1,5 +1,5 @@
 ---
-import Icon from '../mdx/Icon.astro'
+import Icon from '@/components/mdx/Icon.astro'
 ---
 
 <button
@@ -47,10 +47,7 @@ import Icon from '../mdx/Icon.astro'
       )
       root.animate(
         {
-          clipPath: [
-            `circle(0px at ${x}px ${y}px)`,
-            `circle(${r}px at ${x}px ${y}px)`,
-          ],
+          clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`],
         },
         {
           duration: 400,

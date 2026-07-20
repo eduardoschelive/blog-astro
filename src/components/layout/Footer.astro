@@ -1,8 +1,8 @@
 ---
-import Icon from '../mdx/Icon.astro'
-import { STATIC_SEGMENTS, type Locale } from '../../lib/routes'
-import { t } from '../../i18n/messages'
-import { PERSONAL } from '../../constants/site'
+import Icon from '@/components/mdx/Icon.astro'
+import { STATIC_SEGMENTS, type Locale } from '@/lib/routes'
+import { t } from '@/i18n/messages'
+import { PERSONAL } from '@/constants/site'
 
 interface Props {
   locale: Locale
@@ -21,14 +21,33 @@ const links = [
     label: t(locale, 'Navbar.resources'),
     href: `/${locale}/${STATIC_SEGMENTS.resources[locale]}`,
   },
-  { label: t(locale, 'Navbar.about'), href: `/${locale}/${STATIC_SEGMENTS.about[locale]}` },
+  {
+    label: t(locale, 'Navbar.about'),
+    href: `/${locale}/${STATIC_SEGMENTS.about[locale]}`,
+  },
 ]
 
 const social = [
-  { icon: 'brand-github' as const, href: PERSONAL.social.github, label: t(locale, 'Footer.social.github') },
-  { icon: 'brand-linkedin' as const, href: PERSONAL.social.linkedin, label: t(locale, 'Footer.social.linkedin') },
-  { icon: 'mail' as const, href: `mailto:${PERSONAL.social.email}`, label: t(locale, 'Footer.social.email') },
-  { icon: 'rss' as const, href: `/${locale}/rss.xml`, label: t(locale, 'Footer.social.rss') },
+  {
+    icon: 'brand-github' as const,
+    href: PERSONAL.social.github,
+    label: t(locale, 'Footer.social.github'),
+  },
+  {
+    icon: 'brand-linkedin' as const,
+    href: PERSONAL.social.linkedin,
+    label: t(locale, 'Footer.social.linkedin'),
+  },
+  {
+    icon: 'mail' as const,
+    href: `mailto:${PERSONAL.social.email}`,
+    label: t(locale, 'Footer.social.email'),
+  },
+  {
+    icon: 'rss' as const,
+    href: `/${locale}/rss.xml`,
+    label: t(locale, 'Footer.social.rss'),
+  },
 ]
 ---
 
@@ -48,7 +67,10 @@ const social = [
         {
           links.map((l) => (
             <li>
-              <a href={l.href} class="text-sm text-foreground/70 hover:text-primary transition-colors">
+              <a
+                href={l.href}
+                class="text-sm text-foreground/70 hover:text-primary transition-colors"
+              >
                 {l.label}
               </a>
             </li>
@@ -78,6 +100,7 @@ const social = [
   </div>
 
   <div class="border-t border-divider py-6 text-center text-sm text-foreground/60">
-    © {year} {PERSONAL.name.full}. {t(locale, 'Footer.copyright')}
+    © {year}
+    {PERSONAL.name.full}. {t(locale, 'Footer.copyright')}
   </div>
 </footer>

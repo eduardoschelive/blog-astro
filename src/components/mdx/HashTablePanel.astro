@@ -21,9 +21,7 @@ interface Props {
 }
 
 const { title, buckets, probeSteps = [] } = Astro.props
-const stepMap = new Map(
-  probeSteps.map((s, i) => [s.slot, { ...s, index: i + 1 }])
-)
+const stepMap = new Map(probeSteps.map((s, i) => [s.slot, { ...s, index: i + 1 }]))
 ---
 
 <div class="flex flex-col gap-3 flex-1 min-w-0">
@@ -47,9 +45,7 @@ const stepMap = new Map(
             <div class="w-14 shrink-0 flex items-center justify-end gap-1">
               {step && (
                 <>
-                  <span class="text-foreground/40 font-mono text-xs">
-                    {step.index}.
-                  </span>
+                  <span class="text-foreground/40 font-mono text-xs">{step.index}.</span>
                   {step.outcome === 'skip' && (
                     <span class="text-warning font-mono text-xs">skip</span>
                   )}
@@ -71,9 +67,7 @@ const stepMap = new Map(
                 borderClass,
               ]}
             >
-              {isEmpty && (
-                <span class="text-foreground/30 font-mono text-sm">—</span>
-              )}
+              {isEmpty && <span class="text-foreground/30 font-mono text-sm">—</span>}
               {bucket.tombstone && (
                 <span class="text-warning/60 font-mono text-xs line-through">
                   deleted

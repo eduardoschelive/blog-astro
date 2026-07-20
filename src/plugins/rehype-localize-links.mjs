@@ -15,10 +15,7 @@ export function rehypeLocalizeLinks() {
             node.properties.target = '_blank'
             node.properties.rel = 'noopener noreferrer'
             node.properties.dataExternal = 'true'
-          } else if (
-            href.startsWith('/') &&
-            !/^\/(en-US|pt-BR)(\/|$)/.test(href)
-          ) {
+          } else if (href.startsWith('/') && !/^\/(en-US|pt-BR)(\/|$)/.test(href)) {
             node.properties.href = `/${locale}${href}`
           }
         }

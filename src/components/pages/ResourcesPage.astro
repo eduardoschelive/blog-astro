@@ -1,9 +1,9 @@
 ---
-import Icon from '../mdx/Icon.astro'
-import { t } from '../../i18n/messages'
-import { resources as enResources } from '../../data/resources-en'
-import { resources as ptResources } from '../../data/resources-pt'
-import type { Locale } from '../../lib/routes'
+import Icon from '@/components/mdx/Icon.astro'
+import { t } from '@/i18n/messages'
+import { resources as enResources } from '@/data/resources-en'
+import { resources as ptResources } from '@/data/resources-pt'
+import type { Locale } from '@/lib/routes'
 
 interface Props {
   locale: Locale
@@ -117,32 +117,32 @@ const selectClass =
 
 <script>
   function initResourceFilters() {
-  const search = document.querySelector<HTMLInputElement>('#resource-search')
-  const category = document.querySelector<HTMLSelectElement>('#resource-category')
-  const pricing = document.querySelector<HTMLSelectElement>('#resource-pricing')
-  const cards = Array.from(document.querySelectorAll<HTMLElement>('.resource-card'))
-  const empty = document.querySelector<HTMLElement>('#resource-empty')
-  if (!search && !category && !pricing) return
+    const search = document.querySelector<HTMLInputElement>('#resource-search')
+    const category = document.querySelector<HTMLSelectElement>('#resource-category')
+    const pricing = document.querySelector<HTMLSelectElement>('#resource-pricing')
+    const cards = Array.from(document.querySelectorAll<HTMLElement>('.resource-card'))
+    const empty = document.querySelector<HTMLElement>('#resource-empty')
+    if (!search && !category && !pricing) return
 
-  function apply() {
-    const q = (search?.value ?? '').trim().toLowerCase()
-    const cat = category?.value ?? ''
-    const price = pricing?.value ?? ''
-    let visible = 0
-    for (const card of cards) {
-      const ok =
-        (!q || (card.dataset.search ?? '').includes(q)) &&
-        (!cat || card.dataset.category === cat) &&
-        (!price || card.dataset.pricing === price)
-      card.hidden = !ok
-      if (ok) visible++
+    function apply() {
+      const q = (search?.value ?? '').trim().toLowerCase()
+      const cat = category?.value ?? ''
+      const price = pricing?.value ?? ''
+      let visible = 0
+      for (const card of cards) {
+        const ok =
+          (!q || (card.dataset.search ?? '').includes(q)) &&
+          (!cat || card.dataset.category === cat) &&
+          (!price || card.dataset.pricing === price)
+        card.hidden = !ok
+        if (ok) visible++
+      }
+      if (empty) empty.hidden = visible !== 0
     }
-    if (empty) empty.hidden = visible !== 0
-  }
 
-  search?.addEventListener('input', apply)
-  category?.addEventListener('change', apply)
-  pricing?.addEventListener('change', apply)
+    search?.addEventListener('input', apply)
+    category?.addEventListener('change', apply)
+    pricing?.addEventListener('change', apply)
   }
   document.addEventListener('astro:page-load', initResourceFilters)
 </script>
