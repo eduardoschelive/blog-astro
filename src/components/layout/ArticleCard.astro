@@ -25,19 +25,19 @@ const showPos = article.sequence != null && total && total > 0
     class="absolute inset-0 z-10 rounded-2xl"></a>
 
   <div class="flex flex-1 flex-col gap-4 p-6">
-    <div class="flex items-center justify-between gap-3">
+    <div class="flex items-start justify-between gap-3">
       <span
         class:list={[
-          'inline-flex items-center gap-2 font-mono text-[11px] font-medium uppercase tracking-widest',
+          'inline-flex min-w-0 items-center gap-2 font-mono text-[11px] font-medium uppercase tracking-widest',
           'text-primary',
         ]}
       >
-        <span class:list={['h-1.5 w-1.5 rounded-full', 'bg-primary']}></span>
+        <span class:list={['h-1.5 w-1.5 shrink-0 rounded-full', 'bg-primary']}></span>
         {article.categoryTitle}
       </span>
       {
         showPos && (
-          <span class="font-mono text-[11px] tracking-wider text-default-400">
+          <span class="shrink-0 whitespace-nowrap font-mono text-[11px] tracking-wider text-default-400">
             {String(article.sequence).padStart(2, '0')} / {String(total).padStart(2, '0')}
           </span>
         )
