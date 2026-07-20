@@ -1,7 +1,4 @@
 ---
-// Accessible, animated dropdown built on native <details>/<summary>. Provide the
-// clickable trigger via the `trigger` slot and the menu items as default slot
-// children. Open/close animation and dismissal live in dropdown.ts + global.css.
 interface Props {
   align?: 'left' | 'right'
   summaryClass?: string
@@ -44,3 +41,36 @@ const {
   initDropdownGlobals()
   document.addEventListener('astro:page-load', () => setupDropdowns())
 </script>
+
+<style>
+  .dropdown-panel {
+    transform-origin: top;
+  }
+  .dropdown :global(.dropdown-chevron) {
+    transition: rotate 0.2s ease;
+  }
+  .dropdown[open] :global(.dropdown-chevron) {
+    rotate: 180deg;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .dropdown[open] > .dropdown-panel {
+      animation: dropdown-in 0.18s ease-out;
+    }
+    .dropdown[data-closing] > .dropdown-panel {
+      animation: dropdown-out 0.15s ease-in forwards;
+    }
+    @keyframes dropdown-in {
+      from {
+        opacity: 0;
+        transform: translateY(-6px) scale(0.98);
+      }
+    }
+    @keyframes dropdown-out {
+      to {
+        opacity: 0;
+        transform: translateY(-6px) scale(0.98);
+      }
+    }
+  }
+</style>
