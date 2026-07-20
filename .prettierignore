@@ -1,0 +1,10 @@
+dist/
+.astro/
+.vercel/
+node_modules/
+pnpm-lock.yaml
+public/fonts/
+src/og/fonts/
+
+# Authored content — prose wrapping is an editorial choice, not code style.
+content/
