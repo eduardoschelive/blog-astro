@@ -1,22 +1,23 @@
-// @ts-check
-import { defineConfig } from 'astro/config';
+import { defineConfig } from 'astro/config'
 
-import mdx from '@astrojs/mdx';
-import vercel from '@astrojs/vercel';
-import tailwindcss from '@tailwindcss/vite';
-import { unified } from '@astrojs/markdown-remark';
-import { tokyoNightLight } from './src/shiki/tokyo-night-light.ts';
-import { rehypeLocalizeLinks } from './src/plugins/rehype-localize-links.mjs';
+import mdx from '@astrojs/mdx'
+import vercel from '@astrojs/vercel'
+import tailwindcss from '@tailwindcss/vite'
+import { unified } from '@astrojs/markdown-remark'
+import { tokyoNightLight } from './src/shiki/tokyo-night-light.ts'
+import { rehypeLocalizeLinks } from './src/plugins/rehype-localize-links.mjs'
+import { SITE_URL } from './src/constants/site.ts'
+import { DEFAULT_LOCALE } from './src/constants/i18n.ts'
 
 // https://astro.build/config
 export default defineConfig({
-  site: 'https://www.eduardoschelive.com',
+  site: SITE_URL,
   output: 'static',
   prefetch: { prefetchAll: true, defaultStrategy: 'hover' },
   // `/` has no locale; redirect to the default one.
   redirects: {
-    '/': '/en-US',
-    '/rss.xml': '/en-US/rss.xml',
+    '/': `/${DEFAULT_LOCALE}`,
+    '/rss.xml': `/${DEFAULT_LOCALE}/rss.xml`,
   },
   markdown: {
     // Dual theme output; light/dark switch via the `.dark` class in CSS.
@@ -32,4 +33,4 @@ export default defineConfig({
   vite: {
     plugins: [tailwindcss()],
   },
-});
+})
