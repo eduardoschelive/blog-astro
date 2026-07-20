@@ -1,5 +1,5 @@
 ---
-import Icon from '@/components/ui/Icon.astro'
+import { Icon } from 'astro-icon/components'
 import { t } from '@/i18n/messages'
 import { resources as enResources } from '@/data/resources-en'
 import { resources as ptResources } from '@/data/resources-pt'
@@ -103,7 +103,7 @@ const selectClass =
             class="mt-4 inline-flex items-center gap-1 text-sm font-medium text-primary"
           >
             {t(locale, 'Resources.visitSite')}
-            <Icon name="arrow-right" size={14} />
+            <Icon aria-hidden="true" name="tabler:arrow-right" size={14} />
           </a>
         </div>
       ))

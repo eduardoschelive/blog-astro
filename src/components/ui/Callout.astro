@@ -1,5 +1,5 @@
 ---
-import Icon, { type IconName } from './Icon.astro'
+import { Icon } from 'astro-icon/components'
 
 type CalloutType = 'info' | 'warning' | 'success' | 'danger' | 'note'
 
@@ -12,37 +12,37 @@ const { type = 'info', title } = Astro.props
 
 const styles: Record<
   CalloutType,
-  { card: string; icon: string; title: string; glyph: IconName }
+  { card: string; icon: string; title: string; glyph: string }
 > = {
   info: {
     card: 'bg-primary/10 border-l-primary',
     icon: 'text-primary',
     title: 'text-primary',
-    glyph: 'info-circle',
+    glyph: 'tabler:info-circle',
   },
   warning: {
     card: 'bg-warning/10 border-l-warning',
     icon: 'text-warning',
     title: 'text-warning',
-    glyph: 'alert-triangle',
+    glyph: 'tabler:alert-triangle',
   },
   success: {
     card: 'bg-success/10 border-l-success',
     icon: 'text-success',
     title: 'text-success',
-    glyph: 'check',
+    glyph: 'tabler:check',
   },
   danger: {
     card: 'bg-danger/10 border-l-danger',
     icon: 'text-danger',
     title: 'text-danger',
-    glyph: 'x',
+    glyph: 'tabler:x',
   },
   note: {
     card: 'bg-secondary/10 border-l-secondary',
     icon: 'text-secondary',
     title: 'text-secondary',
-    glyph: 'bulb',
+    glyph: 'tabler:bulb',
   },
 }
 
@@ -52,7 +52,7 @@ const s = styles[type]
 <div class:list={['my-4 border-l-4 rounded-lg', s.card]}>
   <div class="p-3">
     <div class="flex items-start gap-3">
-      <Icon name={s.glyph} class:list={['shrink-0 mt-0.5', s.icon]} />
+      <Icon aria-hidden="true" name={s.glyph} class:list={['shrink-0 mt-0.5', s.icon]} />
       <div class="grow min-w-0">
         {title && <h4 class:list={['font-semibold mb-1', s.title]}>{title}</h4>}
         <div

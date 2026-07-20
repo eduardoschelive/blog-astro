@@ -1,5 +1,5 @@
 ---
-import Icon from '@/components/ui/Icon.astro'
+import { Icon } from 'astro-icon/components'
 import { STATIC_SEGMENTS, type Locale } from '@/lib/routes'
 import { t } from '@/i18n/messages'
 import { PERSONAL } from '@/constants/site'
@@ -29,22 +29,22 @@ const links = [
 
 const social = [
   {
-    icon: 'brand-github' as const,
+    icon: 'tabler:brand-github' as const,
     href: PERSONAL.social.github,
     label: t(locale, 'Footer.social.github'),
   },
   {
-    icon: 'brand-linkedin' as const,
+    icon: 'tabler:brand-linkedin' as const,
     href: PERSONAL.social.linkedin,
     label: t(locale, 'Footer.social.linkedin'),
   },
   {
-    icon: 'mail' as const,
+    icon: 'tabler:mail' as const,
     href: `mailto:${PERSONAL.social.email}`,
     label: t(locale, 'Footer.social.email'),
   },
   {
-    icon: 'rss' as const,
+    icon: 'tabler:rss' as const,
     href: `/${locale}/rss.xml`,
     label: t(locale, 'Footer.social.rss'),
   },
@@ -91,7 +91,7 @@ const social = [
               aria-label={s.label}
               class="p-2 rounded-full border border-divider text-foreground/70 hover:text-primary hover:border-primary transition-colors"
             >
-              <Icon name={s.icon} size={20} />
+              <Icon aria-hidden="true" name={s.icon} size={20} />
             </a>
           ))
         }

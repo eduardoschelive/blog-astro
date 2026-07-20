@@ -1,5 +1,5 @@
 ---
-import Icon from '@/components/ui/Icon.astro'
+import { Icon } from 'astro-icon/components'
 import {
   getArticleSummaries,
   getCategorySummaries,
@@ -99,7 +99,7 @@ const featuredCategoryUrl = featured
                   href={featuredCategoryUrl}
                   class="relative z-20 inline-flex h-7 w-fit items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
                 >
-                  <Icon name="folder" size={12} />
+                  <Icon aria-hidden="true" name="tabler:folder" size={12} />
                   {featured.categoryTitle}
                 </a>
 
@@ -113,14 +113,14 @@ const featuredCategoryUrl = featured
 
                 <div class="mt-6 flex items-center gap-3 text-xs text-default-400">
                   <span class="inline-flex items-center gap-1">
-                    <Icon name="calendar" size={14} />
+                    <Icon aria-hidden="true" name="tabler:calendar" size={14} />
                     <time datetime={featured.publishedAt}>
                       {formatDate(featured.publishedAt, locale)}
                     </time>
                   </span>
                   <span aria-hidden>·</span>
                   <span class="inline-flex items-center gap-1">
-                    <Icon name="clock" size={14} />
+                    <Icon aria-hidden="true" name="tabler:clock" size={14} />
                     {readingLabel(featured.readingMinutes, locale)}
                   </span>
                 </div>
@@ -147,7 +147,12 @@ const featuredCategoryUrl = featured
     aria-label={t(locale, 'Hero.scrollDown')}
     class="absolute bottom-8 left-1/2 hidden -translate-x-1/2 rounded-full p-2 transition-transform hover:scale-110 md:flex"
   >
-    <Icon name="chevron-down" size={32} class="animate-bounce text-primary" />
+    <Icon
+      aria-hidden="true"
+      name="tabler:chevron-down"
+      size={32}
+      class="animate-bounce text-primary"
+    />
   </a>
 </section>
 
@@ -187,14 +192,14 @@ const featuredCategoryUrl = featured
                     <div class="mt-2 flex items-center justify-between border-t border-divider/40 pt-4">
                       <div class="flex items-center gap-2 text-xs text-default-400">
                         <span class="inline-flex items-center gap-1">
-                          <Icon name="calendar" size={14} />
+                          <Icon aria-hidden="true" name="tabler:calendar" size={14} />
                           <time datetime={article.publishedAt}>
                             {formatDate(article.publishedAt, locale)}
                           </time>
                         </span>
                         <span aria-hidden>·</span>
                         <span class="inline-flex items-center gap-1">
-                          <Icon name="clock" size={14} />
+                          <Icon aria-hidden="true" name="tabler:clock" size={14} />
                           {readingLabel(article.readingMinutes, locale)}
                         </span>
                       </div>

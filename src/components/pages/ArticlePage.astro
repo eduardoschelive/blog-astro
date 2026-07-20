@@ -1,7 +1,7 @@
 ---
 import ArticleBody from '@/components/mdx/ArticleBody.astro'
 import ArticleCard from '@/components/layout/ArticleCard.astro'
-import Icon from '@/components/ui/Icon.astro'
+import { Icon } from 'astro-icon/components'
 import { getArticlesByCategoryDir, formatDate, readingLabel } from '@/lib/content'
 import { t } from '@/i18n/messages'
 import { STATIC_SEGMENTS, type PageRoute } from '@/lib/routes'
@@ -83,7 +83,7 @@ const jsonLd = [
     href={categoryUrl}
     class="inline-flex items-center gap-1.5 font-mono text-xs uppercase tracking-widest text-primary"
   >
-    <Icon name="folder" size={14} />
+    <Icon aria-hidden="true" name="tabler:folder" size={14} />
     {categoryTitle}
   </a>
 
@@ -125,7 +125,7 @@ const jsonLd = [
           class="group flex flex-col gap-1 rounded-xl border border-divider/50 bg-content2 p-4 transition-colors hover:border-primary/40"
         >
           <span class="inline-flex items-center gap-1 text-xs text-default-400">
-            <Icon name="arrow-left" size={14} />
+            <Icon aria-hidden="true" name="tabler:arrow-left" size={14} />
             {t(locale, 'Article.navigation.previous')}
           </span>
           <span class="font-medium line-clamp-1 group-hover:text-primary">
@@ -144,7 +144,7 @@ const jsonLd = [
         >
           <span class="inline-flex items-center gap-1 text-xs text-default-400">
             {t(locale, 'Article.navigation.next')}
-            <Icon name="arrow-right" size={14} />
+            <Icon aria-hidden="true" name="tabler:arrow-right" size={14} />
           </span>
           <span class="font-medium line-clamp-1 group-hover:text-primary">
             {next.title}

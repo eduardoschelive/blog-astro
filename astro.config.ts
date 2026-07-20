@@ -1,6 +1,7 @@
 import { defineConfig } from 'astro/config'
 
 import mdx from '@astrojs/mdx'
+import icon from 'astro-icon'
 import vercel from '@astrojs/vercel'
 import tailwindcss from '@tailwindcss/vite'
 import { unified } from '@astrojs/markdown-remark'
@@ -25,7 +26,7 @@ export default defineConfig({
     },
     processor: unified({ rehypePlugins: [rehypeLocalizeLinks] }),
   },
-  integrations: [mdx()],
+  integrations: [mdx(), icon()],
   adapter: vercel(),
   vite: {
     plugins: [tailwindcss()],

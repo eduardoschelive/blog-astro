@@ -1,5 +1,5 @@
 ---
-import Icon from '@/components/ui/Icon.astro'
+import { Icon } from 'astro-icon/components'
 import BitBar from './BitBar.astro'
 
 type TypeVariant = 'int' | 'uint' | 'float' | 'complex'
@@ -120,7 +120,7 @@ const lastColumn =
                 role="button"
               >
                 platform-dependent
-                <Icon name="info-circle" size={13} />
+                <Icon aria-hidden="true" name="tabler:info-circle" size={13} />
               </span>
               <span class="tooltip-bubble" role="tooltip">
                 <span class="flex flex-col gap-1.5">

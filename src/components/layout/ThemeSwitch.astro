@@ -1,5 +1,5 @@
 ---
-import Icon from '@/components/ui/Icon.astro'
+import { Icon } from 'astro-icon/components'
 ---
 
 <button
@@ -7,8 +7,8 @@ import Icon from '@/components/ui/Icon.astro'
   class="theme-switch p-2 rounded-full text-foreground/70 hover:text-foreground hover:bg-content3 transition-colors cursor-pointer"
   aria-label="Toggle theme"
 >
-  <Icon name="moon" size={22} class="hidden dark:inline" />
-  <Icon name="sun" size={22} class="inline dark:hidden" />
+  <Icon aria-hidden="true" name="tabler:moon" size={22} class="hidden dark:inline" />
+  <Icon aria-hidden="true" name="tabler:sun" size={22} class="inline dark:hidden" />
 </button>
 
 <script>

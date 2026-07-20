@@ -1,5 +1,5 @@
 ---
-import Icon from '@/components/ui/Icon.astro'
+import { Icon } from 'astro-icon/components'
 
 interface Props {
   title: string
@@ -12,7 +12,7 @@ const { title } = Astro.props
   class="my-6 bg-content1 border-2 border-primary/30 rounded-xl overflow-hidden shadow-lg"
 >
   <div class="px-4 py-3 bg-content2 border-b-2 border-primary/30 flex items-center gap-2">
-    <Icon name="book-2" class="text-primary text-xl" />
+    <Icon aria-hidden="true" name="tabler:book-2" class="text-primary text-xl" />
     <span class="text-base font-semibold text-foreground">{title}</span>
   </div>
   <div class="px-5 py-4 text-foreground/90 leading-relaxed">

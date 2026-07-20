@@ -1,5 +1,5 @@
 ---
-import Icon from '@/components/ui/Icon.astro'
+import { Icon } from 'astro-icon/components'
 import Dropdown from '@/components/ui/Dropdown.astro'
 import ThemeSwitch from './ThemeSwitch.astro'
 import {
@@ -67,7 +67,12 @@ const iconBtn =
       >
         <Fragment slot="trigger">
           {nav[1].label}
-          <Icon name="chevron-down" size={16} class="dropdown-chevron" />
+          <Icon
+            aria-hidden="true"
+            name="tabler:chevron-down"
+            size={16}
+            class="dropdown-chevron"
+          />
         </Fragment>
         {
           categories.map((c) => (
@@ -75,7 +80,12 @@ const iconBtn =
               href={c.href}
               class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-content3 transition-colors"
             >
-              <Icon name="folder" size={16} class="text-primary" />
+              <Icon
+                aria-hidden="true"
+                name="tabler:folder"
+                size={16}
+                class="text-primary"
+              />
               {c.title}
             </a>
           ))
@@ -104,14 +114,14 @@ const iconBtn =
 
     <div class="flex items-center gap-0.5">
       <button type="button" class={iconBtn} data-search-open aria-label="Search">
-        <Icon name="search" size={20} />
+        <Icon aria-hidden="true" name="tabler:search" size={20} />
       </button>
       <a
         href={`/${locale}/rss.xml`}
         class={`hidden sm:inline-flex ${iconBtn}`}
         aria-label="RSS"
       >
-        <Icon name="rss" size={20} />
+        <Icon aria-hidden="true" name="tabler:rss" size={20} />
       </a>
       <a
         href={PERSONAL.social.github}
@@ -120,7 +130,7 @@ const iconBtn =
         class={`hidden sm:inline-flex ${iconBtn}`}
         aria-label="GitHub"
       >
-        <Icon name="brand-github" size={20} />
+        <Icon aria-hidden="true" name="tabler:brand-github" size={20} />
       </a>
 
       <Dropdown
@@ -130,7 +140,7 @@ const iconBtn =
         panelClass="w-32"
         ariaLabel="Language"
       >
-        <Icon name="world" size={20} slot="trigger" />
+        <Icon aria-hidden="true" name="tabler:world" size={20} slot="trigger" />
         <a
           href={alternates['en-US']}
           class="block px-3 py-2 rounded-lg hover:bg-content3 transition-colors"
@@ -152,7 +162,7 @@ const iconBtn =
         panelClass="w-60"
         ariaLabel={t(locale, 'Navbar.openMenu')}
       >
-        <Icon name="menu-2" size={22} slot="trigger" />
+        <Icon aria-hidden="true" name="tabler:menu-2" size={22} slot="trigger" />
         {
           nav.map((item) => (
             <a
@@ -168,7 +178,7 @@ const iconBtn =
           <a href={alternates['en-US']} class={iconBtn}>EN</a>
           <a href={alternates['pt-BR']} class={iconBtn}>PT</a>
           <a href={`/${locale}/rss.xml`} class={iconBtn} aria-label="RSS">
-            <Icon name="rss" size={20} />
+            <Icon aria-hidden="true" name="tabler:rss" size={20} />
           </a>
           <a
             href={PERSONAL.social.github}
@@ -177,7 +187,7 @@ const iconBtn =
             class={iconBtn}
             aria-label="GitHub"
           >
-            <Icon name="brand-github" size={20} />
+            <Icon aria-hidden="true" name="tabler:brand-github" size={20} />
           </a>
         </div>
       </Dropdown>

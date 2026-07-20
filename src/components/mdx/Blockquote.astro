@@ -1,12 +1,13 @@
 ---
-import Icon from '@/components/ui/Icon.astro'
+import { Icon } from 'astro-icon/components'
 ---
 
 <blockquote
   class="my-6 border-l-4 border-l-secondary bg-secondary/5 rounded-r-lg pl-6 pr-4 py-4 relative"
 >
   <Icon
-    name="quote"
+    aria-hidden="true"
+    name="tabler:quote"
     size={24}
     class="absolute -left-3 top-4 text-secondary bg-background rounded-full p-1 shrink-0"
   />

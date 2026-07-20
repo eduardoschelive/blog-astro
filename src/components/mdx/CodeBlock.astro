@@ -1,5 +1,5 @@
 ---
-import Icon from '@/components/ui/Icon.astro'
+import { Icon } from 'astro-icon/components'
 
 const props = Astro.props
 const lang = props['data-language'] ?? ''
@@ -18,11 +18,16 @@ const btn =
     </span>
     <div class="code-actions flex items-center gap-1" data-lang={lang}>
       <button type="button" class:list={['code-copy', btn]}>
-        <Icon name="copy" size={16} class="icon-copy" />
-        <Icon name="check" size={16} class="icon-check hidden" />
+        <Icon aria-hidden="true" name="tabler:copy" size={16} class="icon-copy" />
+        <Icon
+          aria-hidden="true"
+          name="tabler:check"
+          size={16}
+          class="icon-check hidden"
+        />
       </button>
       <button type="button" class:list={['code-download', btn]}>
-        <Icon name="download" size={16} />
+        <Icon aria-hidden="true" name="tabler:download" size={16} />
       </button>
     </div>
   </div>
