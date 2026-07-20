@@ -9,9 +9,6 @@ import ArticlePage from '@/components/pages/ArticlePage.astro'
 import AboutPage from '@/components/pages/AboutPage.astro'
 import ResourcesPage from '@/components/pages/ResourcesPage.astro'
 
-// Single catch-all: translated segments rule out per-page files, so one route
-// dispatches home/categories/about/resources/category/article. An undefined
-// `path` renders the home page (/en-US, /pt-BR).
 export async function getStaticPaths() {
   const routes = await getAllRoutes()
   return routes.map((route) => ({

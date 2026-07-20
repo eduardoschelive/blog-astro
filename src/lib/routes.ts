@@ -120,7 +120,6 @@ export type PageType =
 
 export interface PageRoute {
   locale: Locale
-  // Path after the locale prefix, no leading slash. Empty for the home page.
   path: string
   type: PageType
   alternates: Record<Locale, string>

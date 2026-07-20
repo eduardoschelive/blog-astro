@@ -3,8 +3,6 @@ import { getAllRoutes } from '@/lib/routes'
 import { getPageSeo } from '@/lib/seo'
 import { renderOgImage } from '@/og/render'
 
-// Serves each page's OG image at `<page-url>/opengraph-image.png`, matching the
-// og:image URL set in Seo.astro.
 export async function getStaticPaths() {
   const routes = await getAllRoutes()
   return routes.map((route) => {

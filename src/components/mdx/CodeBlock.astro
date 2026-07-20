@@ -1,10 +1,6 @@
 ---
 import Icon from './Icon.astro'
 
-// Overrides `pre` for fenced code blocks. Astro's Shiki has already produced
-// the highlighted <code> (passed as the slot); we add the card chrome and
-// copy/download actions. The raw text for those actions is read from the DOM
-// at runtime, so no code string needs to be duplicated here.
 const props = Astro.props
 const lang = props['data-language'] ?? ''
 const btn =

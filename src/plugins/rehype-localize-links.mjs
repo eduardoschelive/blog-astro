@@ -1,7 +1,3 @@
-// Build-time link handling for MDX content (replaces the Next.js MDXLink):
-// - internal links get the locale prefix if missing (derived from the file
-//   name, e.g. .../en-US.mdx), so they resolve without any client JS;
-// - external links get target/rel and a data-external marker for styling.
 export function rehypeLocalizeLinks() {
   return (tree, file) => {
     const match = String(file.path || '').match(/(en-US|pt-BR)\.mdx$/)

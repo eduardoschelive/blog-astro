@@ -110,7 +110,6 @@
     font-family: var(--font-mono);
   }
 
-  /* Let the theme-toggle circular reveal own the transition. */
   ::view-transition-old(root),
   ::view-transition-new(root) {
     animation: none;
@@ -118,8 +117,6 @@
   }
 }
 
-/* Scroll-reveal via CSS scroll-driven animations. Progressive: content is
-   fully visible where unsupported or when reduced motion is requested. */
 @supports (animation-timeline: view()) {
   @media (prefers-reduced-motion: no-preference) {
     .reveal {
@@ -136,7 +133,6 @@
   }
 }
 
-/* CSS-only tooltip (no JS island): shown on hover/focus-within. */
 @layer components {
   .tooltip {
     position: relative;

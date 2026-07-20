@@ -2,8 +2,6 @@ import { defineCollection } from 'astro:content'
 import { glob } from 'astro/loaders'
 import { z } from 'astro/zod'
 
-// Default generateId collapses en-US.mdx and pt-BR.mdx of the same folder into
-// one id; use the full relative path so each locale stays a separate entry.
 const idFromPath = ({ entry }: { entry: string }) => entry.replace(/\.mdx$/, '')
 
 const articles = defineCollection({

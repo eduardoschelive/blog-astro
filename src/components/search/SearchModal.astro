@@ -111,8 +111,6 @@ const kbd = 'rounded-md border border-divider bg-content2 px-1.5 py-0.5 font-mon
     headingText: string | null
   }
 
-  // A MiniSearch hit carries every stored field, so it is an Item plus the
-  // search metadata (`match`, `score`, ...).
   type Row = Item & SearchResult
 
   const CONFIG = {
@@ -323,7 +321,6 @@ const kbd = 'rounded-md border border-divider bg-content2 px-1.5 py-0.5 font-mon
       )}</p>${sub}${meta}</div></a></li>`
     }
 
-    // --- snippet extraction (ported from useSearch) ---
     function getSnippet(item: Item, match: Record<string, string[]>): Snippet {
       const fieldMatches: Record<string, string[]> = {}
       for (const [term, fields] of Object.entries(match || {})) {

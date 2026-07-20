@@ -30,13 +30,11 @@ const featuredCategoryUrl = featured
   : categoriesHref
 ---
 
-<!-- Hero -->
 <section
   class="relative flex min-h-[calc(100vh-64px)] items-center justify-center overflow-hidden px-4 py-12"
 >
   <div class="relative z-10 mx-auto w-full max-w-7xl">
     <div class="flex flex-col items-center gap-8 lg:grid lg:grid-cols-2 lg:gap-16">
-      <!-- Left: intro -->
       <div class="w-full space-y-6 lg:space-y-8">
         <div class="space-y-3 lg:space-y-4">
           <h1 class="text-4xl font-bold leading-tight sm:text-5xl lg:text-6xl">
@@ -69,7 +67,6 @@ const featuredCategoryUrl = featured
         </div>
       </div>
 
-      <!-- Right: latest article spotlight -->
       {
         featured && (
           <div class="w-full">
@@ -145,7 +142,6 @@ const featuredCategoryUrl = featured
     </div>
   </div>
 
-  <!-- Scroll-down hint -->
   <a
     href="#latest"
     aria-label={t(locale, 'Hero.scrollDown')}
@@ -155,7 +151,6 @@ const featuredCategoryUrl = featured
   </a>
 </section>
 
-<!-- Latest articles + categories sidebar -->
 <div id="latest" class="w-full px-4 py-8 md:py-12">
   <div class="mx-auto max-w-7xl">
     <div class="grid gap-8 lg:grid-cols-[3fr_1fr] lg:gap-12">
@@ -226,7 +221,6 @@ const featuredCategoryUrl = featured
         </section>
       </div>
 
-      <!-- Categories sidebar -->
       <aside class="sticky top-20 mt-24 hidden self-start lg:top-24 lg:block">
         <div class="mb-6 flex items-center">
           <a
